@@ -56,30 +56,19 @@ for tab in df_tab_names:
 
 # summary must not be a groupby otherwise below functions wont work
 # all_dataframes[1] is the toxicity results data
+batch = all_dataframes[0]
+result = all_dataframes[1]
+wq = all_dataframes[2]
 summary = all_dataframes[1]
 
-# uses apply to get the mean and add column to summary dataframe
-def get_mean(grp):
+def getCalculatedValues(grp):                                                                  
 	grp['Mean'] = grp['Result'].mean()
-        return grp
-summary = summary.groupby(['StationID','ToxBatch','FieldReplicate']).apply(get_mean)
-
-## uses apply to get the n value and add column to summary
-def get_sum(grp):
-    	grp['N'] = grp['FieldReplicate'].sum()
-        return grp
-summary = summary.groupby(['StationID','ToxBatch','FieldReplicate']).apply(get_sum)
-
-## uses apply to get the standard deviation and add column to summary
-def get_std(grp):
+	grp['N'] = grp['FieldReplicate'].sum()
 	grp['StdDev'] = grp['Result'].std()
+	grp['Variance'] = grp['StdDev'].apply(lambda x: x ** 2 )
+	grp['CoefficientVariance'] = ((grp['StdDev']/grp['Mean']) * 100)
 	return grp
-summary = summary.groupby(['StationID','ToxBatch','FieldReplicate']).apply(get_std)
-
-## uses apply to get the variance and add column to summary
-def get_variance(grp):
-    	grp['Variance'] = grp['StdDev'].apply(lambda x: x ** 2 )
-get_variance(summary)
+summary = summary.groupby(['StationID','ToxBatch','FieldReplicate']).apply(getCalculatedValues)
 
 # get all control records
 cneg = summary[['StationID','ToxBatch','SampleTypeCode','Mean']].where(summary['SampleTypeCode'] == 'CNEG')
@@ -189,13 +178,90 @@ def getSQO(grp):
     return grp
 summary = summary.apply(getSQO, axis=1)
 
+### SUMMARY TABLE END ###
+
 #print(summary)
 #summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
-## start of code to find out reference tox lab replicates that are out of range - warning only not error
+## SUMMARY TABLE CHECKS ##
+# the three blocks of code and corresponding for loops could be combined into one simpler function
+def checkSummary(statement,column,warn_or_error,error_label,human_error):
+	for item_number in statement:
+		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
+		dcAddErrorToList(error_label,item_number,unique_error,summary)
 
+# 1 - Warning to check for data entry errors if the standard deviation for a sample exceeds 50 
+checkSummary(summary.loc[(summary["StdDev"] > 50)].index.tolist(),'StdDev','Custom Warning','warning','Warning standard deviation exceeds 50.')
+# 2 - Check that controls meet test acceptability requirements (can be done using summary table data).
+### ***** missing needs to be done ******
+# 3 - Mean should be greater than 90 where Species is equal to "Eohaustorius estuaries" or "EE" and SampleTypeCode is equal to "CNEG"
+checkSummary(summary.loc[(summary['Species'] == 'EE') & (summary['SampleTypeCode'] == 'CNEG') & (summary['Mean'] < 90)].index.tolist(),'Mean','Custom Warning','warning','Does not meet control acceptability criterion; mean control value < 90')
+checkSummary(summary.loc[(summary['Species'] == ('Eohaustorius estuarius' or 'EE')) & (summary['SampleTypeCode'] == 'CNEG') & (summary['Mean'] < 90)].index.tolist(),'Mean','Custom Warning','warning','Does not meet control acceptability criterion; mean control value < 90')
+# 4 - Mean should be greater than 70 where Species is equal to "Mytilus galloprovinialis" or "MG" and SampleTypeCode is equal to "CNEG"
+checkSummary(summary.loc[(summary['Species'] == ('Mytilus galloprovinialis' or 'MG')) & (summary['SampleTypeCode'] == 'CNEG') & (summary['Mean'] < 70)].index.tolist(),'Mean','Custom Warning','warning','Does not meet control acceptability criterion; mean control value < 70')
+# 5 - Coefficient Variance should not be greater than 11.9 where Species is equal to "Eohaustorius estuaries" or "EE" and SampleTypeCode is equal to "CNEG" 
+checkSummary(summary.loc[(summary['Species'] == ('Eohaustorius estuarius' or 'EE')) & (summary['SampleTypeCode'] == 'CNEG') & (summary['CoefficientVariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Warning','warning','Does not meet control acceptability criterion; coefficient value > 11.9')
+## END SUMMARY TABLE CHECKS ##
+
+## LOGIC CHECKS ##
+def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe):
+	for item_number in statement:
+		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
+		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
+# Each toxbatch record must have a corresponding result record. Records are matched on QABatch and LabCode.
+# 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
+### first find matched rows based on toxbatch and result and put into a separate dataframe
+brmatch = pd.merge(batch,result, on=['ToxBatch','QACode'], how='inner')
+### check batch to see which combo toxbatch and labcode are not in the matched/merged dataframe above 
+### check result to see which combo toxbatch and labcode are not in the matched/merged dataframe
+checkLogic(batch[(~batch.ToxBatch.isin(brmatch.ToxBatch))&(batch.QACode.isin(brmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity Batch Information record must have a corresponding Toxicity Result record. Records are matched on ToxBatch and LabCode.',batch)
+checkLogic(result[(~result.ToxBatch.isin(brmatch.ToxBatch))&(result.QACode.isin(brmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity Result record must have a corresponding Toxicity Batch record. Records are matched on ToxBatch and LabCode.',result)
+### second find matched rows based on result and wq and put into a separate dataframe
+rwmatch = pd.merge(result,wq, on=['ToxBatch','QACode'], how='inner')
+checkLogic(result[(~result.ToxBatch.isin(rwmatch.ToxBatch))&(result.QACode.isin(rwmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity Result Information record must have a corresponding Toxicity WQ record. Records are matched on ToxBatch and LabCode.',result)
+checkLogic(wq[(~wq.ToxBatch.isin(rwmatch.ToxBatch))&(wq.QACode.isin(rwmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity WQ Information record must have a corresponding Toxicity Results record. Records are matched on ToxBatch and LabCode.',wq)
+### third find matched rows based on batch and wq and put into a separate dataframe
+bwmatch = pd.merge(batch,wq, on=['ToxBatch','QACode'], how='inner')
+checkLogic(batch[(~batch.ToxBatch.isin(bwmatch.ToxBatch))&(batch.QACode.isin(bwmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity Batch Information record must have a corresponding Toxicity WQ record. Records are matched on ToxBatch and LabCode.',batch)
+checkLogic(wq[(~wq.ToxBatch.isin(bwmatch.ToxBatch))&(wq.QACode.isin(bwmatch.QACode))].index.tolist(),'ToxBatch','Logic Error','error','Each Toxicity WQ Information record must have a corresponding Toxicity Batch record. Records are matched on ToxBatch and LabCode.',wq)
+## END LOGIC CHECKS ##
+
+## BATCH CHECKS ##
+## END BATCH CHECKS ##
+
+## RESULT CHECKS ##
+def checkResults(statement,column,warn_or_error,error_label,human_error,dataframe):
+	for item_number in statement:
+		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
+		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
+# 1. EACH BATCH WITH A MATRIX BS MUST HAVE ONE CNEG SAMPLE #
+# first get unique cneg records from result dataframe
+bsresult = result[['ToxBatch','SampleTypeCode']].where(result['SampleTypeCode'] == 'CNEG')
+bsresult = bsresult.dropna() 
+bsresult['Unique'] = np.nan
+bsresult = bsresult.groupby(['ToxBatch','SampleTypeCode'])['Unique'].nunique().reset_index()
+# second get unique batch records with a matrix of bs
+bsbatch = batch[['ToxBatch','Matrix','tmp_row']].where(batch['Matrix'] == ("Bulk Sediment (whole sediment)" or "BS"))
+bsbatch = bsbatch.dropna()
+bsbatch['Unique'] = np.nan
+bsbatch = bsbatch.groupby(['ToxBatch','Matrix'])['Unique'].nunique().reset_index()
+# merge unique cneg and batch records on where they match
+bsmerge = bsbatch.merge(bsresult, on='ToxBatch', how='inner')
+# locate the rows in results that aren't in the merge of the two
+checkResults(bsresult[(~bsresult.ToxBatch.isin(bsmerge.ToxBatch))].index.tolist(),'SampleTypeCode','Toxicity Error','error','Each batch record with a Matrix = BS must include at least one record with a SampleTypeCode = CNEG',result)
+
+
+## END RESULT CHECKS ##
+# old
 '''
-### TOXICITY CHECKS ###
+unequal_bs = br[(br['Matrix'].isin(['BS'])) & (~br['SampleTypeCode'].isin(["Grab","CNEG"]))]
+checkResults(unequal_bs.index,'SampleTypeCode','Custom Error','error','You have a value in the Matrix column. This requires a corresponding value in batch record and the column SampleTypeCode must have or  you put ')
+
+checkResults(all_dataframes[1].loc[(all_dataframes[1]['matrix_y'] == ('RT' or 'Reference Toxicant')) & (all_dataframes[1]['concentration'] == -88)].index.tolist(),'Concentration','Toxicity Error','error','A Reference Toxicant record in the Matrix field can not have a -88 in the Concentration field')
+'''
+
+## start of code to find out reference tox lab replicates that are out of range - warning only not error
+'''
 def get_labrep_max(grp):
 	summary['Max'] = grp['LabRep'].max()
 	return grp
