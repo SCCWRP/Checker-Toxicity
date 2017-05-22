@@ -39,7 +39,7 @@ def dcAddErrorToList(error_column, row, error_to_add,df):
 ### WORKSPACE START ###
 # place the bight13 toxicity data in a location that the application can access
 #df = pd.ExcelFile('/Users/pauls/Documents/Projects/Bight18/Training/clean.xlsx')
-df = pd.ExcelFile('./clean.xlsx')
+df = pd.ExcelFile('./errors.xlsx')
 
 # get sheet names
 df_tab_names = df.sheet_names
@@ -150,47 +150,55 @@ def getPValue(summary):
 			if (p <= .05):
 				summary.ix[index, 'significance'] = 'SC'
 			else:
-				summary.ix[index, 'significance'] = 'NSC'
+				if (summary.ix[index, 'sampletypecode'] == 'CNEG'):
+					summary.ix[index, 'significance'] = 'X'
+				else:
+					summary.ix[index, 'significance'] = 'NSC'
 getPValue(summary)
 
 ## author - Tyler Vu 
 def getSQO(grp):
-    if(grp['species'] == 'Eohaustorius estuarius'):
-        if(grp['mean'] < 90):
-            if (grp['pctcontrol'] < 82):
-                if (grp['pctcontrol'] < 59):
-                    grp['sqo'] = 'High Toxicity'
+	#if(grp[grp.index.map(lambda x: x[0] in species)]):
+    	#if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
+    	if(grp['species'] == 'EE'):
+        	if(grp['mean'] < 90):
+            		if (grp['pctcontrol'] < 82):
+                		if (grp['pctcontrol'] < 59):
+                    			grp['sqo'] = 'High Toxicity'
+                		else:
+                    			if (grp['significance'] == 'NSC'):
+                        			grp['sqo'] = 'Low Toxicity'
+                    			else:
+                        			grp['sqo'] = 'Moderate Toxicity'
+            		else:
+                		if (grp['significance'] == 'NSC'):
+                    			grp['sqo'] = 'Nontoxic'
                 else:
-                    if (grp['significance'] == 'NSC'):
-                        grp['sqo'] = 'Low Toxicity'
-                    else:
-                        grp['sqo'] = 'Moderate Toxicity'
-            else:
-                if (grp['significance'] == 'NSC'):
-                    grp['sqo'] = 'Nontoxic'
-                else:
-                    grp['sqo'] = 'Low Toxicity'
-        else:
-            grp['sqo'] = 'Nontoxic'
-    elif (grp['species'] == 'Mytilus galloprovincialis'):
-        if (grp['mean'] < 80):
-            if (grp['pctcontrol'] < 77):
-                if (grp['pctcontrol'] < 42):
-                    grp['sqo'] = 'High Toxicity'
-                else:
-                    if (grp['significance'] == 'NSC'):
-                        grp['sqo'] = 'Low Toxicity'
-                    else:
-                        grp['sqo'] = 'Moderate Toxicity'
-            else:
-                if (grp['significance'] == 'NSC'):
-                    grp['sqo'] = 'Nontoxic'
-                else:
-                    grp['sqo'] = 'Low Toxicity'
-        else:
-            grp['sqo'] = 'Nontoxic'
-    return grp
-summary = summary.apply(getSQO, axis=1)
+            		grp['sqo'] = 'Nontoxic'
+    	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
+    	elif (grp['species'] == 'MG'):
+        	if (grp['mean'] < 80):
+            		if (grp['pctcontrol'] < 77):
+                		if (grp['pctcontrol'] < 42):
+                    			grp['sqo'] = 'High Toxicity'
+                		else:
+                    			if (grp['significance'] == 'NSC'):
+                        			grp['sqo'] = 'Low Toxicity'
+                    			else:
+                        			grp['sqo'] = 'Moderate Toxicity'
+            		else:
+                		if (grp['significance'] == 'NSC'):
+                    			grp['sqo'] = 'Nontoxic'
+                		else:
+                    			grp['sqo'] = 'Low Toxicity'
+        	else:
+            		grp['sqo'] = 'Nontoxic'
+    	return grp
+summary.apply(getSQO, axis=1)
+summary.drop('result', axis=1, inplace=True)
+summary.drop('labrep', axis=1, inplace=True)
+# group on the following columns and reset as a dataframe rather than groupby object
+#summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','significance','qacode']).size().to_frame(name = 'count').reset_index()
 ### SUMMARY TABLE END ###
 
 ## SUMMARY TABLE CHECKS ##
@@ -221,11 +229,17 @@ summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
 
-## LOGIC CHECKS ##
+## CHECKS ##
+def checkData(statement,column,warn_or_error,error_label,human_error,dataframe):
+	for item_number in statement:
+		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
+		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
 def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe):
 	for item_number in statement:
 		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
 		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
+
+## LOGIC ##
 # 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
 ### first find matched rows based on toxbatch and result and put into a separate dataframe
 brmatch = pd.merge(batch,result, on=['toxbatch','labcode'], how='inner')
@@ -277,13 +291,36 @@ checkLogic(dfrep.loc[(dfrep['species'].isin(['Eohaustorius estuarius','EE','Myti
 print("## A MINIMUM NUMBER OF 10 REPLICATES ARE REQUIRED FOR SPECIES NEANTHES ARENACEODENTATA ##")
 print(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)])
 checkLogic(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)].tmp_row.tolist(),'LabRep','Logic Error','error','A minimum number of 10 replicates are required for species Neanthes arenaceodentata',result)
-## END LOGIC CHECKS ##
 
-### CHECKER ###
-def checkData(statement,column,warn_or_error,error_label,human_error,dataframe):
-	for item_number in statement:
-		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
-		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
+# 3. EACH BS BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE.
+print("## EACH BS BATCH MUST HAVE A REFERENCE TOXICANT BATCH WITHIN A SPECIFIED DATE RANGE. ##")
+# get reference toxicant dataframe
+batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
+# get bs dataframe
+batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','Bulk Sediment (whole sediment)']))
+# drop empty
+batchrt = batchrt.dropna()
+batchbs = batchbs.dropna()
+# find any bs batch records with a missing rt 
+print(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
+checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS batch record is missing reference toxicant batch record',batch)
+# merge bs and rt
+bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
+# create date range column
+def checkRTDate(grp):
+	grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
+        grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
+	d = grp['teststartdate_x'] - grp['teststartdate_y']
+        grp['daterange'] = abs(d.days)
+	return grp
+bsmerge = bsmerge.apply(checkRTDate, axis = 1)
+# checks by species and datarange
+print(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
+checkData(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
+print(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
+checkData(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
+print(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
+## END LOGIC CHECKS ##
 
 ## BATCH CHECKS ##
 # 1. EACH BATCH WITH A MATRIX OF BS MUST INCLUDE A CORRESPONDING RESULT CNEG SAMPLE
@@ -300,6 +337,8 @@ bsbatch['unique'] = np.nan
 bsbatch = bsbatch.groupby(['toxbatch','matrix','tmp_row'])['unique'].nunique().reset_index()
 # merge unique cneg and batch records on where they match
 bsmerge = bsbatch.merge(bsresult, on='toxbatch', how='inner')
+bslocate = bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].toxbatch.tolist()
+# label batch records
 print(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))])
 checkData(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].tmp_row.tolist(),'Result/SampleTypeCode','Toxicity Error','error','Each batch with a matrix of BS must include a corresponding result CNEG sample',batch)
 # 2. EACH BATCH WITH A MATRIX OF RT MUST INCLUDE A CORRESPONDING RESULT WITH SAMPLETYPECODE = RFNH3.
@@ -321,7 +360,7 @@ checkData(rtbatch[(~rtbatch.toxbatch.isin(rtmerge.toxbatch))].tmp_row.tolist(),'
 ## END BATCH CHECKS ##
 
 ## RESULT CHECKS ##
-# Number. CHECK IF SAMPLES WERE TESTED WITHIN 28 DAY HOLDING TIME
+# 1. CHECK IF SAMPLES WERE TESTED WITHIN 28 DAY HOLDING TIME
 print("## CHECK IF SAMPLES WERE TESTED WITHIN 28 DAY HOLDING TIME ##")
 # merge result and batch on toxbatch but include teststartdate
 df28 = pd.merge(result, batch[['toxbatch', 'teststartdate']], how = 'left', on = 'toxbatch')
@@ -334,13 +373,28 @@ df28['checkdate'] = df28['teststartdate'] - df28['samplecollectdate']
 print(df28.loc[df28['checkdate'].dt.days > 28])
 checkData(df28.loc[df28['checkdate'].dt.days > 28].tmp_row.tolist(),'SampleTypeCode','Toxicity Error','error','Samples must be tested within a 28 day holding time.',result)
 
-# REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CAN'T BE -88.
+# 2. REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CAN'T BE -88.
 print("## REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CANT BE -88 ##")
 print(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)])
 checkData(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)].tmp_row.tolist(),'Concentration','Toxicity Error','error','A "Reference Toxicant" record in the Matrix field can not have a -88 in the Concentration field',result)
-
-# EACH BS BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE. WHAT IS THE SPECIFIED DATE RANGE? 10 DAYS FOR EE AND 2 DAYS FOR MG.
-
-# STILL TO DO
-
 ## END RESULT CHECKS ##
+
+## START WQ CHECKS ##
+# 1. CHECK THAT WATER QUALITY PARAMETERS ARE WITHIN ACCEPTABLE RANGES.
+# merge wq and batch on toxbatch to get species from batch
+dfwq = pd.merge(wq[['toxbatch','parameter','result']], batch[['toxbatch', 'species']], how = 'left', on = 'toxbatch')
+print(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','Mytilus galloprovincialis','EE','MG'])) & (dfwq['parameter'] == 'TEMP') & ((dfwq['result'] < 13) | (dfwq['result'] > 17))])
+checkData(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','Mytilus galloprovincialis','EE','MG'])) & (dfwq['parameter'] == 'TEMP') & ((dfwq['result'] < 13) | (dfwq['result'] > 17))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for TEMP not in acceptable range: must be between 13-17',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','Mytilus galloprovincialis','EE','MG'])) & (dfwq['parameter'] == 'SAL') & ((dfwq['result'] <= 30) | (dfwq['result'] >= 34))])
+checkData(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','Mytilus galloprovincialis','EE','MG'])) & (dfwq['parameter'] == 'SAL') & ((dfwq['result'] <= 30) | (dfwq['result'] >= 34))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for SAL not in acceptable range: must be between 30-34',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'DO') & (dfwq['result'] < 7.5)])
+checkData(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'DO') & (dfwq['result'] < 7.5)].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for DO not in acceptable range: must be greater than 7.5',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.7) | (dfwq['result'] >= 8.3))])
+checkData(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.7) | (dfwq['result'] >= 8.3))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for PH not in acceptable range: must be between 7.7-8.3',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'NH3T') & (dfwq['result'] > 20)])
+checkData(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','EE'])) & (dfwq['parameter'] == 'NH3T') & (dfwq['result'] > 20)].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for NH3T not in acceptable range: must be less than 20',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'DO') & (dfwq['result'] < 4.0)])
+checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'DO') & (dfwq['result'] < 4.0)].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for DO not in acceptable range: must be greater than 4.0',wq)
+print(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))])
+checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for paramter PH not in acceptable range: must be between 7.6-8.3',wq)
+## END WQ CHECKS ##
