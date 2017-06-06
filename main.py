@@ -6,6 +6,7 @@ import xlrd
 #from ordereddict import OrderedDict
 import collections
 import math
+import urllib, json
 stdout = sys.stdout
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -194,7 +195,7 @@ def getSQO(grp):
         	else:
             		grp['sqo'] = 'Nontoxic'
     	return grp
-summary.apply(getSQO, axis=1)
+summary = summary.apply(getSQO, axis=1)
 summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
@@ -225,6 +226,8 @@ print("## COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS 
 print(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)])
 checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Toxicity','error','Does not meet control acceptability criterion; coefficient value > 11.9')
 ## END SUMMARY TABLE CHECKS ##
+# group on the following columns and reset as a dataframe rather than groupby object
+summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','pvalue','tstat','significance','qacode']).size().to_frame(name = 'count').reset_index()
 summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
@@ -377,6 +380,30 @@ checkData(df28.loc[df28['checkdate'].dt.days > 28].tmp_row.tolist(),'SampleTypeC
 print("## REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CANT BE -88 ##")
 print(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)])
 checkData(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)].tmp_row.tolist(),'Concentration','Toxicity Error','error','A "Reference Toxicant" record in the Matrix field can not have a -88 in the Concentration field',result)
+
+# 3. STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH.
+print("## STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH. ##")
+# concatenate station and species together - used below to match against whats returned from database
+result['stationidspecies'] = result['stationid'] + "+" + result['species']
+# lab list to search by
+lab = result.labcode.unique()
+for l in lab:
+	search_url = "https://gis.sccwrp.org/arcgis/rest/services/Bight18ToxicityAssignedSpecies/FeatureServer/0/query?where=lab=%27{0}%27&1=1&returnGeometry=false&outFields=stationid,lab,species&f=json".format(l)
+	print(search_url)
+	response = urllib.urlopen(search_url)
+	data = json.loads(response.read())
+	# loop through json records and build station and species into a single string then add to list 
+	search_list = []
+	for i in data['features']:
+		print(i['attributes']['stationid']+ "+" + i['attributes']['species'])
+		search_list.append(i['attributes']['stationid']+ "+" + i['attributes']['species'])
+	print(search_list)
+	# find stations/species that dont match between submission and whats in database based on lab
+	print(result.loc[~result['stationidspecies'].isin(search_list)].stationid.tolist())
+	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
+# drop temporary column
+result.drop('stationidspecies', axis=1, inplace=True)
+
 ## END RESULT CHECKS ##
 
 ## START WQ CHECKS ##
