@@ -146,15 +146,15 @@ def getPValue(summary):
 		summary.ix[index, 'tstat'] = t
 		summary.ix[index, 'pvalue'] = p/2 #we divide by 2 to make it a 1 tailed
 		if (t < 0):
-			summary.ix[index, 'significance'] = 'NSC'
+			summary.ix[index, 'sigeffect'] = 'NSC'
 		else:
 			if (p <= .05):
-				summary.ix[index, 'significance'] = 'SC'
+				summary.ix[index, 'sigeffect'] = 'SC'
 			else:
 				if (summary.ix[index, 'sampletypecode'] == 'CNEG'):
-					summary.ix[index, 'significance'] = 'X'
+					summary.ix[index, 'sigeffect'] = 'X'
 				else:
-					summary.ix[index, 'significance'] = 'NSC'
+					summary.ix[index, 'sigeffect'] = 'NSC'
 getPValue(summary)
 
 ## author - Tyler Vu 
@@ -167,12 +167,12 @@ def getSQO(grp):
                 		if (grp['pctcontrol'] < 59):
                     			grp['sqo'] = 'High Toxicity'
                 		else:
-                    			if (grp['significance'] == 'NSC'):
+                    			if (grp['sigeffect'] == 'NSC'):
                         			grp['sqo'] = 'Low Toxicity'
                     			else:
                         			grp['sqo'] = 'Moderate Toxicity'
             		else:
-                		if (grp['significance'] == 'NSC'):
+                		if (grp['sigeffect'] == 'NSC'):
                     			grp['sqo'] = 'Nontoxic'
                 else:
             		grp['sqo'] = 'Nontoxic'
@@ -183,23 +183,23 @@ def getSQO(grp):
                 		if (grp['pctcontrol'] < 42):
                     			grp['sqo'] = 'High Toxicity'
                 		else:
-                    			if (grp['significance'] == 'NSC'):
+                    			if (grp['sigeffect'] == 'NSC'):
                         			grp['sqo'] = 'Low Toxicity'
                     			else:
                         			grp['sqo'] = 'Moderate Toxicity'
             		else:
-                		if (grp['significance'] == 'NSC'):
+                		if (grp['sigeffect'] == 'NSC'):
                     			grp['sqo'] = 'Nontoxic'
                 		else:
                     			grp['sqo'] = 'Low Toxicity'
         	else:
-            		grp['sqo'] = 'Nontoxic'
+            		grp['sqocategory'] = 'Nontoxic'
     	return grp
 summary = summary.apply(getSQO, axis=1)
 summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
-#summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','significance','qacode']).size().to_frame(name = 'count').reset_index()
+#summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
 ### SUMMARY TABLE END ###
 
 ## SUMMARY TABLE CHECKS ##
@@ -226,8 +226,10 @@ print("## COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS 
 print(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)])
 checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Toxicity','error','Does not meet control acceptability criterion; coefficient value > 11.9')
 ## END SUMMARY TABLE CHECKS ##
+# rename a few columns to match with existing b13 column names
+summary.rename(columns={"labcode":"lab", "resultunits": "units"}, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
-summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','pvalue','tstat','significance','qacode']).size().to_frame(name = 'count').reset_index()
+summary = summary.groupby(['stationid','lab','sampletypecode','toxbatch','species','concentration','endpoint','units','sqocategory','mean','n','stddev','pctcontrol','pvalue','tstat','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
 summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
