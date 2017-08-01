@@ -169,10 +169,7 @@ def getPValue(summary):
 			if (single_tail <= .05):
 				summary.ix[index, 'sigeffect'] = 'SC'
 			else:
-				if (summary.ix[index, 'sampletypecode'] == 'CNEG'):
-					summary.ix[index, 'sigeffect'] = 'X'
-				else:
-					summary.ix[index, 'sigeffect'] = 'NSC'
+				summary.ix[index, 'sigeffect'] = 'NSC'
 getPValue(summary)
 
 ## author - Tyler Vu 
@@ -192,6 +189,8 @@ def getSQO(grp):
             		else:
                 		if (grp['sigeffect'] == 'NSC'):
                     			grp['sqocategory'] = 'Nontoxic'
+              			else:
+					grp['sqocategory'] = 'Low Toxicity'
                 else:
             		grp['sqocategory'] = 'Nontoxic'
     	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
