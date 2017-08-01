@@ -71,11 +71,23 @@ for tab in df_tab_names:
 ### SUMMARY TABLE START ###
 
 # summary must not be a groupby otherwise below functions wont work
-# all_dataframes[1] is the toxicity results data
+# result is the toxicity results data
 batch = all_dataframes[0]
 result = all_dataframes[1]
-wq = all_dataframes[2]
 summary = all_dataframes[1]
+wq = all_dataframes[2]
+''' need working
+for dataframe in all_dataframes.keys():
+	df_sheet_and_table_name = dataframe.strip().split(" - ")
+	table_name = str(df_sheet_and_table_name[2])
+	if table_name == "tbltoxicitybatchinformation":
+		batch = all_dataframes[dataframe]
+	if table_name == "tbltoxicityresults":
+		result = all_dataframes[dataframe]
+		summary = all_dataframes[dataframe]
+	if table_name == "tbltoxicitywq":
+		wq = all_dataframes[dataframe]
+'''
 
 def getCalculatedValues(grp):                                                                  
 	grp['mean'] = grp['result'].mean()
@@ -103,6 +115,11 @@ nocneg['unique'] = np.nan
 
 control_mean = cneg.groupby(['stationid','toxbatch','mean', 'sampletypecode'])['unique'].nunique().reset_index()
 result_mean = nocneg.groupby(['stationid','toxbatch','mean', 'sampletypecode'])['unique'].nunique().reset_index()
+
+# create controlvalue column
+# copy control_mean dataframe column mean to controlvalue
+control_mean['controlvalue'] = control_mean['mean']
+summary = summary.merge(control_mean[['toxbatch','controlvalue']], how = 'left', on = ['toxbatch'])
 
 ## prep code control_mean_stats_dict used in getPctControl function
 #cneg_stats = summary[['stationid','toxbatch','sampletypecode','n','stddev','mean','variance']].where(summary['sampletypecode'] == 'CNEG')
@@ -144,11 +161,12 @@ def getPValue(summary):
 		result_both = result_both.dropna()
 		t, p = stats.ttest_ind(cneg_result, result_both, equal_var = False)
 		summary.ix[index, 'tstat'] = t
-		summary.ix[index, 'pvalue'] = p/2 #we divide by 2 to make it a 1 tailed
+		single_tail = p/2
+		summary.ix[index, 'pvalue'] = single_tail #we divide by 2 to make it a 1 tailed
 		if (t < 0):
 			summary.ix[index, 'sigeffect'] = 'NSC'
 		else:
-			if (p <= .05):
+			if (single_tail <= .05):
 				summary.ix[index, 'sigeffect'] = 'SC'
 			else:
 				if (summary.ix[index, 'sampletypecode'] == 'CNEG'):
@@ -165,33 +183,33 @@ def getSQO(grp):
         	if(grp['mean'] < 90):
             		if (grp['pctcontrol'] < 82):
                 		if (grp['pctcontrol'] < 59):
-                    			grp['sqo'] = 'High Toxicity'
+                    			grp['sqocategory'] = 'High Toxicity'
                 		else:
                     			if (grp['sigeffect'] == 'NSC'):
-                        			grp['sqo'] = 'Low Toxicity'
+                        			grp['sqocategory'] = 'Low Toxicity'
                     			else:
-                        			grp['sqo'] = 'Moderate Toxicity'
+                        			grp['sqocategory'] = 'Moderate Toxicity'
             		else:
                 		if (grp['sigeffect'] == 'NSC'):
-                    			grp['sqo'] = 'Nontoxic'
+                    			grp['sqocategory'] = 'Nontoxic'
                 else:
-            		grp['sqo'] = 'Nontoxic'
+            		grp['sqocategory'] = 'Nontoxic'
     	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
     	elif (grp['species'] == 'MG'):
         	if (grp['mean'] < 80):
             		if (grp['pctcontrol'] < 77):
                 		if (grp['pctcontrol'] < 42):
-                    			grp['sqo'] = 'High Toxicity'
+                    			grp['sqocategory'] = 'High Toxicity'
                 		else:
                     			if (grp['sigeffect'] == 'NSC'):
-                        			grp['sqo'] = 'Low Toxicity'
+                        			grp['sqocategory'] = 'Low Toxicity'
                     			else:
-                        			grp['sqo'] = 'Moderate Toxicity'
+                        			grp['sqocategory'] = 'Moderate Toxicity'
             		else:
                 		if (grp['sigeffect'] == 'NSC'):
-                    			grp['sqo'] = 'Nontoxic'
+                    			grp['sqocategory'] = 'Nontoxic'
                 		else:
-                    			grp['sqo'] = 'Low Toxicity'
+                    			grp['sqocategory'] = 'Low Toxicity'
         	else:
             		grp['sqocategory'] = 'Nontoxic'
     	return grp
@@ -199,7 +217,7 @@ summary = summary.apply(getSQO, axis=1)
 summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
-#summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqo','mean','n','stddev','pctcontrol','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
+#summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqocategory','mean','n','stddev','pctcontrol','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
 ### SUMMARY TABLE END ###
 
 ## SUMMARY TABLE CHECKS ##
@@ -229,7 +247,7 @@ checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'
 # rename a few columns to match with existing b13 column names
 summary.rename(columns={"labcode":"lab", "resultunits": "units"}, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
-summary = summary.groupby(['stationid','lab','sampletypecode','toxbatch','species','concentration','endpoint','units','sqocategory','mean','n','stddev','pctcontrol','pvalue','tstat','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
+summary = summary.groupby(['stationid','lab','sampletypecode','toxbatch','species','concentration','endpoint','units','sqocategory','mean','n','stddev','pctcontrol','pvalue','tstat','sigeffect','qacode','controlvalue']).size().to_frame(name = 'count').reset_index()
 summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
@@ -297,34 +315,46 @@ print("## A MINIMUM NUMBER OF 10 REPLICATES ARE REQUIRED FOR SPECIES NEANTHES AR
 print(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)])
 checkLogic(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)].tmp_row.tolist(),'LabRep','Logic Error','error','A minimum number of 10 replicates are required for species Neanthes arenaceodentata',result)
 
-# 3. EACH BS BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE.
-print("## EACH BS BATCH MUST HAVE A REFERENCE TOXICANT BATCH WITHIN A SPECIFIED DATE RANGE. ##")
+# 3. EACH BS or SWI BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE.
+print("## EACH BS or SWI BATCH MUST HAVE A REFERENCE TOXICANT BATCH WITHIN A SPECIFIED DATE RANGE. ##")
 # get reference toxicant dataframe
 batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
-# get bs dataframe
-batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','Bulk Sediment (whole sediment)']))
-# drop empty
+# drop emptys
 batchrt = batchrt.dropna()
-batchbs = batchbs.dropna()
-# find any bs batch records with a missing rt 
-print(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
-checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS batch record is missing reference toxicant batch record',batch)
-# merge bs and rt
-bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
-# create date range column
-def checkRTDate(grp):
-	grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
-        grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
-	d = grp['teststartdate_x'] - grp['teststartdate_y']
-        grp['daterange'] = abs(d.days)
-	return grp
-bsmerge = bsmerge.apply(checkRTDate, axis = 1)
-# checks by species and datarange
-print(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
-checkData(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
-print(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
-checkData(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
-print(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
+if len(batchrt.index) != 0:
+	# get bs dataframe added swi on 21june17
+	batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
+	# drop emptys
+	batchbs = batchbs.dropna()
+	# get bs dataframe
+	if len(batchbs.index) != 0:
+		# find any bs batch records with a missing rt 
+		print(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
+		checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS or SWI batch record is missing reference toxicant batch record',batch)
+		# merge bs and rt
+		bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
+		# create date range column
+		def checkRTDate(grp):
+			grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
+       			grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
+			d = grp['teststartdate_x'] - grp['teststartdate_y']
+       			grp['daterange'] = abs(d.days)
+			return grp
+		bsmerge = bsmerge.apply(checkRTDate, axis = 1)
+		# checks by species and datarange
+		print(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
+		checkLogic(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
+		print(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
+		checkLogic(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
+		print(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
+	else:
+		unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Bulk Sediment record in batch submission"}'
+		addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
+		errorsCount('custom')
+else:
+	unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Reference Toxicant record in batch submission"}'
+	addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
+	errorsCount('custom')
 ## END LOGIC CHECKS ##
 
 ## BATCH CHECKS ##
@@ -336,7 +366,7 @@ bsresult = bsresult.dropna()
 bsresult['unique'] = np.nan
 bsresult = bsresult.groupby(['toxbatch','sampletypecode'])['unique'].nunique().reset_index()
 # second get unique batch records with a matrix of bs
-bsbatch = batch[['toxbatch','matrix','tmp_row']].where(batch['matrix'].isin(["Bulk Sediment (whole sediment)","BS"]))
+bsbatch = batch[['toxbatch','matrix','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
 bsbatch = bsbatch.dropna()
 bsbatch['unique'] = np.nan
 bsbatch = bsbatch.groupby(['toxbatch','matrix','tmp_row'])['unique'].nunique().reset_index()
@@ -345,7 +375,7 @@ bsmerge = bsbatch.merge(bsresult, on='toxbatch', how='inner')
 bslocate = bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].toxbatch.tolist()
 # label batch records
 print(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))])
-checkData(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].tmp_row.tolist(),'Result/SampleTypeCode','Toxicity Error','error','Each batch with a matrix of BS must include a corresponding result CNEG sample',batch)
+checkData(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].tmp_row.tolist(),'Result/SampleTypeCode','Toxicity Error','error','Each batch with a matrix of BS or SWI must include a corresponding result CNEG sample',batch)
 # 2. EACH BATCH WITH A MATRIX OF RT MUST INCLUDE A CORRESPONDING RESULT WITH SAMPLETYPECODE = RFNH3.
 print("## EACH BATCH WITH A MATRIX OF RT MUST INCLUDE A CORRESPONDING RESULT WITH SAMPLETYPECODE = RFNH3. ##")
 # first get unique rfnh3 records from result dataframe
