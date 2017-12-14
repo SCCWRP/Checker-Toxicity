@@ -432,10 +432,30 @@ for l in lab:
 	# find stations/species that dont match between submission and whats in database based on lab
 	print(result.loc[~result['stationidspecies'].isin(search_list)].stationid.tolist())
 	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
-# 4. QACode Check - A single qacode is required but multiple qacodes are possible (many to many). 
+
+# 4. QACODE CHECK - A SINGLE QACODE IS REQUIRED B UT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY).
+print("## QA CODE CHECK: CHECK TO SEE IF THE QA CODE ENTERED MATCHES QA CODE LIST VALUES (MULTIPLE QA CODES ALLOWED). ##")
+# lu_qacode
+jsonurl = urllib.urlopen("https://gis.sccwrp.org/arcgis/rest/services/bight2018lu_qacodes/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json").read()
+qalist = json.loads(jsonurl)
+# creates list of acceptable qa codes
+qa_codes = []
+for i in range(len(qalist['features'])):
+    qa_codes.append(qalist['features'][i]['attributes']['qacode'])
+# checks to see if qa codes in results 'qacode' column are valid
+qa_dat = result['qacode']
+qa_dat.fillna('empty',inplace = True)
+invalid_qa = []
+for i in range(len(qa_dat)):
+    qa_split = qa_dat[i].replace(',',' ').split()
+    for j in range(len(qa_split)):
+        if qa_split[j] not in qa_codes:
+                invalid_qa.append(qa_dat[i])
+print(result.loc[result['qacode'].isin(invalid_qa)].tmp_row.tolist())
+checkData(result.loc[result['qacode'].isin(invalid_qa)].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s)',result)
+
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
-
 ## END RESULT CHECKS ##
 
 ## START WQ CHECKS ##
