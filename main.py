@@ -432,6 +432,7 @@ for l in lab:
 	# find stations/species that dont match between submission and whats in database based on lab
 	print(result.loc[~result['stationidspecies'].isin(search_list)].stationid.tolist())
 	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
+# 4. QACode Check - A single qacode is required but multiple qacodes are possible (many to many). 
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
 
