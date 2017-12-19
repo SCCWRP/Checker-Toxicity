@@ -12,10 +12,31 @@ stdout = sys.stdout
 reload(sys)
 sys.setdefaultencoding('utf-8')
 sys.stdout = stdout
+import xlsxwriter
 
 ## COMMON FUNCTIONS
+el = []
+def dcErrorLabel(df, row, err):
+        er_dict = json.loads(err)  
+        er_col = er_dict['column'].lower() 
+        print er_col
+        if er_col in result.columns.values:
+                er_index = result.columns.get_loc(er_col) + 1 
+        elif er_col in batch.columns.values:
+                er_index = batch.columns.get_loc(er_col) + 1
+##        elif er_col in summary.columns.values: 
+##                er_index = summary.columns.get_loc(er_col) + 1
+        elif er_col in wq.columns.values:
+                er_index = wq.columns.get_loc(er_col) + 1
+        else:
+                return
+        
+        el.append([df.name,row,er_index]) # creates tuple of indices for excel cells
+        return
+
 def dcAddErrorToList(error_column, row, error_to_add,df):
         df.ix[int(row), 'row'] = str(row)
+        dcErrorLabel(df,row+1,error_to_add)
         if error_column in df.columns:
                 # check if cell value is empty (nan) 
                 if(pd.isnull(df.ix[int(row), error_column])):
@@ -73,10 +94,10 @@ for tab in df_tab_names:
 
 # summary must not be a groupby otherwise below functions wont work
 # result is the toxicity results data
-batch = all_dataframes[0]
-result = all_dataframes[1]
+batch, batch.name = all_dataframes[0], 'batch'
+result, result.name = all_dataframes[1], 'result'
 summary = all_dataframes[1]
-wq = all_dataframes[2]
+wq, wq.name = all_dataframes[2], 'wq'
 ''' need working
 for dataframe in all_dataframes.keys():
         df_sheet_and_table_name = dataframe.strip().split(" - ")
@@ -218,6 +239,7 @@ summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
 #summary = summary.groupby(['stationid','labcode','sampletypecode','toxbatch','species','concentration','endpoint','resultunits','sqocategory','mean','n','stddev','pctcontrol','sigeffect','qacode']).size().to_frame(name = 'count').reset_index()
+summary.name = 'summary'
 ### SUMMARY TABLE END ###
 
 ## SUMMARY TABLE CHECKS ##
@@ -410,9 +432,9 @@ for i in range(len(qa_dat2)):
         if qa_split[j] not in qa_codes:
                 invalid_qa = qa_dat[i]
                 if qa_split[j] == 'empty':
-                        checkData(batch[batch['testacceptability'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
+                        checkData(batch[batch['testacceptability'].isnull()].tmp_row.tolist(),'TestAcceptability','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,batch)
                 else:
-                        checkData(batch.loc[batch['testacceptability']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
+                        checkData(batch.loc[batch['testacceptability']==invalid_qa].tmp_row.tolist(),'TestAcceptability','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],batch)
 ## END BATCH CHECKS ##
 
 ## RESULT CHECKS ##
@@ -432,7 +454,7 @@ checkData(df28.loc[df28['checkdate'].dt.days > 28].tmp_row.tolist(),'SampleTypeC
 # 2. REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CAN'T BE -88.
 print("## REFERENCE TOXICANT IN THE MATRIX FIELD MUST HAVE DATA IN CONCENTRATION FIELD. CANT BE -88 ##")
 print(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)])
-checkData(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)].tmp_row.tolist(),'Concentration','Toxicity Error','error','A "Reference Toxicant" record in the Matrix field can not have a -88 in the Concentration field',result)
+checkData(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)].tmp_row.tolist(),'Concentration','Toxicity Error','error',"A 'Reference Toxicant' record in the Matrix field can not have a -88 in the Concentration field",result)
 
 # 3. STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH.
 print("## STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH. ##")
@@ -456,26 +478,20 @@ for l in lab:
         checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
 
 # 4. QACODE CHECK - A SINGLE QACODE IS REQUIRED B UT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY).
-print("## QACODE CHECK - A SINGLE QACODE IS REQUIRED B UT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). ##")
-# lu_qacode
-jsonurl = urllib.urlopen("https://gis.sccwrp.org/arcgis/rest/services/bight2018lu_qacodes/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json").read()
-qalist = json.loads(jsonurl)
-# creates list of acceptable qa codes
-qa_codes = []
-for i in range(len(qalist['features'])):
-    qa_codes.append(qalist['features'][i]['attributes']['qacode'])
+print("## QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). ##")
 # checks to see if qa codes in results 'qacode' column are valid
 qa_dat = result['qacode']
 qa_dat2 = qa_dat.fillna('empty')
+c = 0
 for i in range(len(qa_dat2)):
-    qa_split = qa_dat2[i].replace(',',' ').split()
-    for j in range(len(qa_split)):
-        if qa_split[j] not in qa_codes:
-                invalid_qa = qa_dat[i]
-                if qa_split[j] == 'empty':
-                        checkData(result[result['qacode'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
-                else:
-                        checkData(result.loc[result['qacode']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
+        qa_split = qa_dat2[i].replace(',',' ').split()
+        for j in range(len(qa_split)):
+                if qa_split[j] not in qa_codes:
+                        invalid_qa = qa_dat2[i]
+                        if qa_split[j] == 'empty':
+                                checkData(result[result['qacode'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
+                        else:
+                                checkData(result.loc[result['qacode']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
 
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
@@ -500,3 +516,46 @@ checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & 
 print(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))])
 checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for paramter PH not in acceptable range: must be between 7.6-8.3',wq)
 ## END WQ CHECKS ##
+
+
+## START CONDITIONAL FORMATTING ##
+
+#remove 'tmp_row' and 'row' column from dataframe
+result.drop(['tmp_row','row'],axis=1,inplace=True)
+batch.drop(['tmp_row','row'],axis=1,inplace=True)
+wq.drop(['tmp_row','row'],axis=1,inplace=True)
+
+# Declares ExcelWriter using xlsxwriter engine
+writer = pd.ExcelWriter('./pandas_conditional.xlsx', engine='xlsxwriter')
+
+# creates individiual worksheets in excel
+batch.to_excel(writer, sheet_name = 'tblToxicityBatchInformation')
+result.to_excel(writer, sheet_name = 'tblToxicityResults')
+summary.to_excel(writer, sheet_name = 'tblToxicitySummary')
+wq.to_excel(writer, sheet_name = 'tblToxicityWQ')
+
+# Compiles all worksheets into single workbook
+workbook = writer.book
+worksheet1 = writer.sheets['tblToxicityBatchInformation']
+worksheet2 = writer.sheets['tblToxicityResults']
+worksheet3 = writer.sheets['tblToxicitySummary']
+worksheet4 = writer.sheets['tblToxicityWQ']
+
+# Formats for given errors or non-errors
+format_red = workbook.add_format({'bg_color': '#FFC7CE'})
+
+# adds conditional formats
+for i in range(len(el)):
+                if el[i][0] == 'batch':
+                        worksheet1.conditional_format(el[i][1],el[i][2],el[i][1],el[i][2],{'type': 'no_errors',
+                                                                                           'format':format_red})
+                elif el[i][0] == 'result':
+                        worksheet2.conditional_format(el[i][1],el[i][2],el[i][1],el[i][2],{'type': 'no_errors',
+                                                                                           'format':format_red})
+                elif el[i][0] == 'summary':
+                        worksheet3.conditional_format(el[i][1],el[i][2],el[i][1],el[i][2],{'type': 'no_errors',
+                                                                                           'format':format_red})
+                else:
+                        worksheet4.conditional_format(el[i][1],el[i][2],el[i][1],el[i][2],{'type': 'no_errors',
+                                                                                           'format':format_red})                        
+writer.save()
