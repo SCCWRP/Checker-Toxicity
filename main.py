@@ -404,13 +404,15 @@ for i in range(len(qalist['features'])):
 # checks to see if qa codes in batch 'testacceptability' column are valid
 qa_dat = batch['testacceptability']
 qa_dat2 = qa_dat.fillna('empty')
-invalid_qa = []
 for i in range(len(qa_dat2)):
     qa_split = qa_dat2[i].replace(',',' ').split()
     for j in range(len(qa_split)):
         if qa_split[j] not in qa_codes:
-                invalid_qa.append(qa_dat[i])
-checkData(batch.loc[batch['testacceptability'].isin(invalid_qa)].tmp_row.tolist(),'TestAcceptability','Toxicity Error','error','Invalid QA Code(s)',result)
+                invalid_qa = qa_dat[i]
+                if qa_split[j] == 'empty':
+                        checkData(batch[batch['testacceptability'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
+                else:
+                        checkData(batch.loc[batch['testacceptability']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
 ## END BATCH CHECKS ##
 
 ## RESULT CHECKS ##
@@ -465,13 +467,15 @@ for i in range(len(qalist['features'])):
 # checks to see if qa codes in results 'qacode' column are valid
 qa_dat = result['qacode']
 qa_dat2 = qa_dat.fillna('empty')
-invalid_qa = []
 for i in range(len(qa_dat2)):
     qa_split = qa_dat2[i].replace(',',' ').split()
     for j in range(len(qa_split)):
         if qa_split[j] not in qa_codes:
-                invalid_qa.append(qa_dat[i])
-checkData(result.loc[result['qacode'].isin(invalid_qa)].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s)',result)
+                invalid_qa = qa_dat[i]
+                if qa_split[j] == 'empty':
+                        checkData(result[result['qacode'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
+                else:
+                        checkData(result.loc[result['qacode']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
 
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
