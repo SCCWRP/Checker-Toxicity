@@ -265,6 +265,33 @@ def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe)
 		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
 		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
 
+def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
+    # author - Jordan Golemo
+    # example: field = qacode, ucfield = QACode, listname = lu_toxtestacceptability, listfield = testacceptability, df = results
+    # get published lookup list values
+    url_search = "https://gis.sccwrp.org/arcgis/rest/services/bight2018%s/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json" % listname
+    jsonurl = urllib.urlopen(url_search).read()
+    jsonlist = json.loads(jsonurl)
+    list_of_codes = []
+    # add lookup list values to array
+    for i in range(len(jsonlist['features'])):
+        list_of_codes.append(jsonlist['features'][i]['attributes'][listfield])
+    # submitted field to check against lookup list
+    df_search = df[field]
+    df_search = df_search.fillna('empty')
+    for i in range(len(df_search)):
+        # submitted individual field/cell values are separated by commas like: A,B,C
+        df_split = df_search[i].replace(',',' ').split()
+        for j in range(len(df_split)):
+            # find out if individual element is not in url lookup list
+            if df_split[j] not in list_of_codes:
+                invalid_code = df_search[i]
+                # required so it cant be empty
+                if df_split[j] == 'empty':
+                    checkData(df[df[field].isnull()].tmp_row.tolist(),ucfield,'Toxicity Error','error','A code is required: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (listname,listname),df)
+                else:
+                    checkData(df.loc[df[field]==invalid_code].tmp_row.tolist(),ucfield,'Toxicity Error','error','You have submitted an invalid code: %s. Please see lookup list: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (df_split[j],listname,listname),df)
+
 ## LOGIC ##
 # 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
 ### first find matched rows based on toxbatch and result and put into a separate dataframe
@@ -395,6 +422,11 @@ rtbatch = rtbatch.groupby(['toxbatch','matrix','tmp_row'])['unique'].nunique().r
 rtmerge = rtbatch.merge(rtresult, on='toxbatch', how='inner')
 errorLog(rtbatch[(~rtbatch.toxbatch.isin(rtmerge.toxbatch))])
 checkData(rtbatch[(~rtbatch.toxbatch.isin(rtmerge.toxbatch))].tmp_row.tolist(),'Result/SampleTypeCode','Toxicity Error','error','Each batch with a matrix of RT must include a corresponding result SampleTypeCode = RFNH3',batch)
+
+# 3. TESTACCEPTABILITY CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY) author - Jordan Golemo
+errorLog("TESTACCEPTABILITY CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
+dcValueAgainstMultipleValues ('testacceptability','TestAcceptability','lu_toxtestacceptability','testacceptability',batch)
+
 ## END BATCH CHECKS ##
 
 ## RESULT CHECKS ##
@@ -438,26 +470,8 @@ for l in lab:
 	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
 
 # 4. QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). author - Jordan Golemo
-errorLog("## QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). ##")
-# lu_qacode
-jsonurl = urllib.urlopen("https://gis.sccwrp.org/arcgis/rest/services/bight2018lu_qacodes/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json").read()
-qalist = json.loads(jsonurl)
-# creates list of acceptable qa codes
-qa_codes = []
-for i in range(len(qalist['features'])):
-    qa_codes.append(qalist['features'][i]['attributes']['qacode'])
-# checks to see if qa codes in results 'qacode' column are valid
-qa_dat = result['qacode']
-qa_dat2 = qa_dat.fillna('empty')
-for i in range(len(qa_dat2)):
-    qa_split = qa_dat2[i].replace(',',' ').split()
-    for j in range(len(qa_split)):
-        if qa_split[j] not in qa_codes:
-            invalid_qa = qa_dat2[i]
-            if qa_split[j] == 'empty':
-                checkData(result[result['qacode'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
-            else:
-                checkData(result.loc[result['qacode']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
+errorLog("QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
+dcValueAgainstMultipleValues ('qacode','QACode','lu_toxtestacceptability','testacceptability',result)
 
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
