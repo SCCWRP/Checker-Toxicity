@@ -1,3 +1,1 @@
-	stationid	lab	sampletypecode	toxbatch	species	concentration	endpoint	units	sqocategory	mean	n	stddev	pctcontrol	pvalue	tstat	sigeffect	qacode	count
-0	0000	LACSD	CNEG	mgcSed0814	MG	-88	NPA	PERCENTAGE	Nontoxic	86.264	5	9.24316936986	100.0	0.5	0.0	X	A	5
-1	B13-8325	LACSD	QA	mgcSed0814	MG	-88	NPA	PERCENTAGE	Nontoxic	79.036	10	12.8415606528	91.6210702031	0.169906845747	1.02149538466	NSC	A	5
+	stationid	lab	sampletypecode	toxbatch	species	concentration	endpoint	units	sqocategory	mean	n	stddev	pctcontrol	pvalue	tstat	sigeffect	qacode	controlvalue	count
