@@ -449,15 +449,15 @@ for i in range(len(qalist['features'])):
 # checks to see if qa codes in results 'qacode' column are valid
 qa_dat = result['qacode']
 qa_dat2 = qa_dat.fillna('empty')
-invalid_qa = []
 for i in range(len(qa_dat2)):
     qa_split = qa_dat2[i].replace(',',' ').split()
     for j in range(len(qa_split)):
         if qa_split[j] not in qa_codes:
-            invalid_qa.append(qa_dat[i])
-errorLog(result.loc[result['qacode'].isin(invalid_qa)])
-errorLog(result.loc[result['qacode'].isin(invalid_qa)].tmp_row.tolist())
-checkData(result.loc[result['qacode'].isin(invalid_qa)].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Codes',result)
+            invalid_qa = qa_dat2[i]
+            if qa_split[j] == 'empty':
+                checkData(result[result['qacode'].isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % np.nan,result)
+            else:
+                checkData(result.loc[result['qacode']==invalid_qa].tmp_row.tolist(),'QACode','Toxicity Error','error','Invalid QA Code(s): %s' % qa_split[j],result)
 
 # drop temporary column
 result.drop('stationidspecies', axis=1, inplace=True)
@@ -465,6 +465,7 @@ result.drop('stationidspecies', axis=1, inplace=True)
 
 ## START WQ CHECKS ##
 # 1. CHECK THAT WATER QUALITY PARAMETERS ARE WITHIN ACCEPTABLE RANGES.
+errorLog("## CHECK THAT WATER QUALITY PARAMETERS ARE WITHIN ACCEPTABLE RANGES. ##")
 # merge wq and batch on toxbatch to get species from batch
 dfwq = pd.merge(wq[['toxbatch','parameter','result']], batch[['toxbatch', 'species']], how = 'left', on = 'toxbatch')
 errorLog(dfwq.loc[(dfwq['species'].isin(['Eohaustorius estuarius','Mytilus galloprovincialis','EE','MG'])) & (dfwq['parameter'] == 'TEMP') & ((dfwq['result'] < 13) | (dfwq['result'] > 17))])
