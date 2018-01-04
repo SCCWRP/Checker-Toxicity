@@ -180,7 +180,7 @@ getPValue(summary)
 def getSQO(grp):
 	#if(grp[grp.index.map(lambda x: x[0] in species)]):
     	#if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
-    	if(grp['species'] == 'EE'):
+    	if(grp['species'] == 'Eohaustorius estuarius'):
         	if(grp['mean'] < 90):
             		if (grp['pctcontrol'] < 82):
                 		if (grp['pctcontrol'] < 59):
@@ -198,7 +198,7 @@ def getSQO(grp):
                 else:
             		grp['sqocategory'] = 'Nontoxic'
     	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
-    	elif (grp['species'] == 'MG'):
+    	elif (grp['species'] == 'Mytilus galloprovincialis'):
         	if (grp['mean'] < 80):
             		if (grp['pctcontrol'] < 77):
                 		if (grp['pctcontrol'] < 42):
