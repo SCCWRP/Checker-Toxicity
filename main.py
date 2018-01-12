@@ -278,19 +278,18 @@ def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
         list_of_codes.append(jsonlist['features'][i]['attributes'][listfield])
     # submitted field to check against lookup list
     df_search = df[field]
-    df_search = df_search.fillna('empty')
-    for i in range(len(df_search)):
-        # submitted individual field/cell values are separated by commas like: A,B,C
-        df_split = df_search[i].replace(',',' ').split()
-        for j in range(len(df_split)):
-            # find out if individual element is not in url lookup list
-            if df_split[j] not in list_of_codes:
-                invalid_code = df_search[i]
-                # required so it cant be empty
-                if df_split[j] == 'empty':
-                    checkData(df[df[field].isnull()].tmp_row.tolist(),ucfield,'Toxicity Error','error','A code is required: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (listname,listname),df)
-                else:
-                    checkData(df.loc[df[field]==invalid_code].tmp_row.tolist(),ucfield,'Toxicity Error','error','You have submitted an invalid code: %s. Please see lookup list: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (df_split[j],listname,listname),df)
+    df_err = df_search.dropna().str.replace(',',' ').str.split(' ',expand=True)
+
+    # Creates list of rows with errors (er_inds) / list of the problematic value (er_vals)
+    inds = [df_err[i].index[(df_err[i].notnull()) & (~df_err[i].isin(list_of_codes))] for i in range(len(df_err.columns))]
+    er_inds = [item for sublist in inds for item in sublist]
+    vals = [df_err[i].loc[(df_err[i].notnull()) & (~df_err[i].isin(list_of_codes))] for i in range(len(df_err.columns))]
+    er_vals = [item for sublist in vals for item in sublist]
+
+    # errors out NaN rows as well as Invalid QA Rows
+    checkData(df.loc[df_search.isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','A code is required: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (listname,listname),df)
+    for i in range(len(er_inds)):
+        checkData([er_inds[i]],'QACode','Toxicity Error','error','You have submitted an invalid code: %s. Please see lookup list: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (er_vals[i],listname,listname),df)
 
 ## LOGIC ##
 # 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
