@@ -278,7 +278,7 @@ def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
         list_of_codes.append(jsonlist['features'][i]['attributes'][listfield])
     # submitted field to check against lookup list
     df_search = df[field]
-    df_err = df_search.dropna().str.replace(',',' ').str.split(' ',expand=True)
+    df_err = df_search.dropna().str.replace(', ',',').str.replace(',',' ').str.split(' ',expand=True)
 
     # Creates list of rows with errors (er_inds) / list of the problematic value (er_vals)
     inds = [df_err[i].index[(df_err[i].notnull()) & (~df_err[i].isin(list_of_codes))] for i in range(len(df_err.columns))]
