@@ -1,4 +1,6 @@
 import sys
+import os
+from sqlalchemy import create_engine
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -269,23 +271,19 @@ def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
     # author - Jordan Golemo
     # example: field = qacode, ucfield = QACode, listname = lu_toxtestacceptability, listfield = testacceptability, df = results
     # get published lookup list values
-    url_search = "https://gis.sccwrp.org/arcgis/rest/services/bight2018%s/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json" % listname
-    jsonurl = urllib.urlopen(url_search).read()
-    jsonlist = json.loads(jsonurl)
-    list_of_codes = []
-    # add lookup list values to array
-    for i in range(len(jsonlist['features'])):
-        list_of_codes.append(jsonlist['features'][i]['attributes'][listfield])
+    eng = create_engine('postgresql://b18read:1969$Harbor@192.168.1.16:5432/bight2018')
+    results = eng.execute("select * from lu_toxtestacceptability;")
+    db = pd.DataFrame(results.fetchall())
+    db.columns = results.keys()
+    list_of_codes = db[listfield].tolist()
     # submitted field to check against lookup list
     df_search = df[field]
     df_err = df_search.dropna().str.replace(', ',',').str.replace(',',' ').str.split(' ',expand=True)
-
     # Creates list of rows with errors (er_inds) / list of the problematic value (er_vals)
     inds = [df_err[i].index[(df_err[i].notnull()) & (~df_err[i].isin(list_of_codes))] for i in range(len(df_err.columns))]
     er_inds = [item for sublist in inds for item in sublist]
     vals = [df_err[i].loc[(df_err[i].notnull()) & (~df_err[i].isin(list_of_codes))] for i in range(len(df_err.columns))]
     er_vals = [item for sublist in vals for item in sublist]
-
     # errors out NaN rows as well as Invalid QA Rows
     checkData(df.loc[df_search.isnull()].tmp_row.tolist(),'QACode','Toxicity Error','error','A code is required: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (listname,listname),df)
     for i in range(len(er_inds)):
