@@ -20,7 +20,7 @@ def errorLog(message):
 def dcAddErrorToList(error_column, row, error_to_add,df):
 	df.ix[int(row), 'row'] = str(row)
 	if error_column in df.columns:
-		# check if cell value is empty (nan) 
+		# check if cell value is empty (nan)
 		if(pd.isnull(df.ix[int(row), error_column])):
 			# no data exists in cell so add error
 	      		df.ix[int(row), error_column] = error_to_add
@@ -93,7 +93,7 @@ for dataframe in all_dataframes.keys():
 		wq = all_dataframes[dataframe]
 '''
 
-def getCalculatedValues(grp):                                                                  
+def getCalculatedValues(grp):
 	grp['mean'] = grp['result'].mean()
 	grp['n'] = grp['fieldreplicate'].sum()
 	grp['stddev'] = grp['result'].std()
@@ -176,7 +176,7 @@ def getPValue(summary):
 				summary.ix[index, 'sigeffect'] = 'NSC'
 getPValue(summary)
 
-## author - Tyler Vu 
+## author - Tyler Vu
 def getSQO(grp):
 	#if(grp[grp.index.map(lambda x: x[0] in species)]):
     	#if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
@@ -230,7 +230,7 @@ def checkSummary(statement,column,warn_or_error,error_label,human_error):
 		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
 		dcAddErrorToList(error_label,item_number,unique_error,summary)
 
-# 1 - WARNING TO CHECK FOR DATA ENTRY ERRORS IF THE STANDARD DEVIATION FOR A SAMPLE EXCEEDS 50 
+# 1 - WARNING TO CHECK FOR DATA ENTRY ERRORS IF THE STANDARD DEVIATION FOR A SAMPLE EXCEEDS 50
 errorLog("## WARNING TO CHECK FOR DATA ENTRY ERRORS IF THE STANDARD DEVIATION FOR A SAMPLE EXCEEDS 50 ##")
 errorLog(summary.loc[(summary["stddev"] > 50)])
 checkSummary(summary.loc[(summary["stddev"] > 50)].index.tolist(),'StdDev','Custom Toxicity','error','Warning standard deviation exceeds 50.')
@@ -242,7 +242,7 @@ checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'
 errorLog("## MEAN SHOULD BE GREATER THAN 70 WHERE SPECIES IS EQUAL TO MYTILUS GALLOPROVINIALIS OR MG AND SAMPLETYPECODE IS EQUAL TO CNEG ##")
 errorLog(summary.loc[(summary['species'].isin(['Mytilus galloprovinialis','MG'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 70)])
 checkSummary(summary.loc[(summary['species'].isin(['Mytilus galloprovinialis','MG'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 70)].index.tolist(),'Mean','Custom Toxicity','error','Does not meet control acceptability criterion; mean control value < 70')
-# 4 - COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS EQUAL TO "EOHAUSTORIUS ESTUARIES" OR "EE" AND SAMPLETYPECODE IS EQUAL TO "CNEG" 
+# 4 - COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS EQUAL TO "EOHAUSTORIUS ESTUARIES" OR "EE" AND SAMPLETYPECODE IS EQUAL TO "CNEG"
 errorLog("## COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS EQUAL TO EOHAUSTORIUS ESTUARIES OR EE AND SAMPLETYPECODE IS EQUAL TO CNEG ##")
 errorLog(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)])
 checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Toxicity','error','Does not meet control acceptability criterion; coefficient value > 11.9')
@@ -296,7 +296,7 @@ def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
 # 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
 ### first find matched rows based on toxbatch and result and put into a separate dataframe
 brmatch = pd.merge(batch,result, on=['toxbatch','lab'], how='inner')
-### check batch to see which combo toxbatch and lab are not in the matched/merged dataframe above 
+### check batch to see which combo toxbatch and lab are not in the matched/merged dataframe above
 ### check result to see which combo toxbatch and lab are not in the matched/merged dataframe
 ### make sure there are records that match between batch and result - otherwise big problem
 if len(brmatch.index) != 0:
@@ -358,7 +358,7 @@ if len(batchrt.index) != 0:
 	batchbs = batchbs.dropna()
 	# get bs dataframe
 	if len(batchbs.index) != 0:
-		# find any bs batch records with a missing rt 
+		# find any bs batch records with a missing rt
 		errorLog(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
 		checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS or SWI batch record is missing reference toxicant batch record',batch)
 		# merge bs and rt
@@ -392,7 +392,7 @@ else:
 errorLog("## EACH BATCH WITH A MATRIX OF BS MUST INCLUDE A CORRESPONDING RESULT CNEG SAMPLE ##")
 # first get unique cneg records from result dataframe
 bsresult = result[['toxbatch','sampletypecode']].where(result['sampletypecode'] == 'CNEG')
-bsresult = bsresult.dropna() 
+bsresult = bsresult.dropna()
 bsresult['unique'] = np.nan
 bsresult = bsresult.groupby(['toxbatch','sampletypecode'])['unique'].nunique().reset_index()
 # second get unique batch records with a matrix of bs
@@ -410,7 +410,7 @@ checkData(bsbatch[(~bsbatch.toxbatch.isin(bsmerge.toxbatch))].tmp_row.tolist(),'
 errorLog("## EACH BATCH WITH A MATRIX OF RT MUST INCLUDE A CORRESPONDING RESULT WITH SAMPLETYPECODE = RFNH3. ##")
 # first get unique rfnh3 records from result dataframe
 rtresult = result[['toxbatch','sampletypecode']].where(result['sampletypecode'] == 'RFNH3')
-rtresult = rtresult.dropna() 
+rtresult = rtresult.dropna()
 rtresult['unique'] = np.nan
 rtresult = rtresult.groupby(['toxbatch','sampletypecode'])['unique'].nunique().reset_index()
 # second get unique batch records with a matrix of rt
@@ -459,7 +459,7 @@ for l in lab:
 	errorLog(search_url)
 	response = urllib.urlopen(search_url)
 	data = json.loads(response.read())
-	# loop through json records and build station and species into a single string then add to list 
+	# loop through json records and build station and species into a single string then add to list
 	search_list = []
 	for i in data['features']:
 		errorLog(i['attributes']['stationid']+ "+" + i['attributes']['species'])
