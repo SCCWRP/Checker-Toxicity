@@ -93,7 +93,7 @@ def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe)
 ## LOGIC CHECKS ##
 
 ## END LOGIC CHECKS ##
-
+# Eric - Station Check - A lab is assigned both stations and test species. Check to see if the submission matches both. If not, report back that the station and/or species doesn't match what was assigned. Possible error: "Unassigned Station" and "Unassigned Species". The html link for both station and species should point to a labs assigned values.
 eng = create_engine('postgresql://b18read:1969$Harbor@192.168.1.16:5432/bight2018')
 spec_results = eng.execute("select * from sample_assignment_table where datatype='Toxicity';")
 db = DataFrame(spec_results.fetchall())
@@ -116,3 +116,23 @@ checkData(merge_labs_resultsData.loc[merge_labs_resultsData['Check_species'] != 
 # creates a new column of boolean series to check if every item in column stationid_x is contained in column stationsid_y
 merge_labs_resultsData['Check_station'] = merge_labs_resultsData.apply(lambda row: row['stationid_x'] in row['stationid_y'], axis=1)
 checkData(merge_labs_resultsData.loc[merge_labs_resultsData['Check_station'] != True].index.tolist(),'species','Custom Field','warning','"Unassigned station"',merge_labs_resultsData)
+
+# Eric - A toxicity submission (batch, results,wq) requires that the field data be submitted first. To check all unique Result/StationID records should have a corresponding record in Field/Grab/StationID (make sure it wasn't abandoned also). This should be an error.
+#### === THERE WAS NO STATIONID INCLUDED IN THE BATCH TAB === ####
+eng = create_engine('postgresql://b18read:1969$Harbor@192.168.1.16:5432/bight2018')
+tbl_stationoccupation_df = eng.execute("select tbl_stationoccupation.stationid, tbl_stationoccupation.abandoned from tbl_stationoccupation ")
+db2 = DataFrame(tbl_stationoccupation_df.fetchall())
+db2.columns = tbl_stationoccupation_df.keys()
+# merged the databse(tbl_stationoccupation.stationid) with result (stationid)
+merge_db2_result = result[['stationid']].merge(db2, how ='left', on = 'stationid')
+
+#- Message should read "A comment is required when 'Yes' is listed in the Abandoned field
+checkData(merge_db2_result.where(merge_db2_result['abandoned'].isin(['Yes'])).dropna(axis = 0, how = 'all').index.tolist(),'abandoned','occupation','Error','StationId is an Abandoned field',merge_db2_result)
+
+merge_db2_wq = wq[['stationid']].merge(db2, how ='left', on = 'stationid')
+
+#- Message should read "A comment is required when 'Yes' is listed in the Abandoned field
+checkData(merge_db2_wq.where(merge_db2_wq['abandoned'].isin(['Yes'])).dropna(axis = 0, how = 'all').index.tolist(),'abandoned','occupation','Error','StationId is an Abandoned field',merge_db2_wq)
+
+
+# db.to_csv('data_2', header=None, index=None, sep=' ', mode='a')
