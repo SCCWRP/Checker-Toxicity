@@ -94,28 +94,27 @@ def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe)
 
 ## END LOGIC CHECKS ##
 # Eric - Station Check - A lab is assigned both stations and test species. Check to see if the submission matches both. If not, report back that the station and/or species doesn't match what was assigned. Possible error: "Unassigned Station" and "Unassigned Species". The html link for both station and species should point to a labs assigned values.
+# Creates dataframe from database
 eng = create_engine('postgresql://b18read:1969$Harbor@192.168.1.16:5432/bight2018')
-spec_results = eng.execute("select * from sample_assignment_table where datatype='Toxicity';")
+spec_results = eng.execute("select stationid,lab,parameter from sample_assignment_table where datatype='Toxicity';")
 db = DataFrame(spec_results.fetchall())
 db.columns = spec_results.keys()
-# From database, determines lists of valid stationIDs and species
-group1 = db.groupby('lab')['stationid'].unique()
-group2 = db.groupby('lab')['parameter'].unique()
-labs = pd.concat([group1,group2],axis=1).reset_index()
 
-# Submitted stationID and species for specified lab
-result_lab_data = result[['lab','stationid','species']]
+# Creates new field of unique stationID/species assignments 
+db['unique_assignment'] = db.apply(lambda row: row.stationid + '|' + row.parameter, axis=1)
+dblabs = db.groupby('lab')['unique_assignment'].unique().reset_index()
 
-# merge dataframe labs and dataframe result_lab_data
-merge_labs_resultsData = pd.merge(result_lab_data[['lab','stationid','species']], labs[['lab','stationid','parameter']], how = 'left', on = 'lab')
+# Creates new dataframe from submitted data containing only pertinent fields and produces unique stationID/species submission
+sublabs = result[['lab','stationid','species']]
+sublabs = sublabs.drop(sublabs[sublabs['stationid']=='0000'].index)
+sublabs['unique_submission'] = sublabs.apply(lambda row: row.stationid + '|' + row.species, axis=1)
 
-# creates a new column of boolean series to check if every item in column species is contained in column paramter
-merge_labs_resultsData['Check_species'] = merge_labs_resultsData.apply(lambda row: row['species'] in row['parameter'], axis=1)
-checkData(merge_labs_resultsData.loc[merge_labs_resultsData['Check_species'] != True].index.tolist(),'species','Custom Field','warning','"Unassigned species"',merge_labs_resultsData)
+# Merges assignment dataframe and submitted data dataframe by lab.
+mer = pd.merge(sublabs[['lab','unique_submission']], dblabs, how = 'left', on = 'lab').set_index(sublabs.index)
 
-# creates a new column of boolean series to check if every item in column stationid_x is contained in column stationsid_y
-merge_labs_resultsData['Check_station'] = merge_labs_resultsData.apply(lambda row: row['stationid_x'] in row['stationid_y'], axis=1)
-checkData(merge_labs_resultsData.loc[merge_labs_resultsData['Check_station'] != True].index.tolist(),'species','Custom Field','warning','"Unassigned station"',merge_labs_resultsData)
+# checks submitted stationID against assigned stationIDs
+errorLog(mer.loc[mer.apply(lambda row: row.unique_submission  in row.unique_assignment, axis=1) == False])
+checkData(mer.loc[mer.apply(lambda row: row.unique_submission  in row.unique_assignment, axis=1) == False].index.tolist(),'species','Custom Field','error','Unassigned Station or Species',result)
 
 # Eric - A toxicity submission (batch, results,wq) requires that the field data be submitted first. To check all unique Result/StationID records should have a corresponding record in Field/Grab/StationID (make sure it wasn't abandoned also). This should be an error.
 #### === THERE WAS NO STATIONID INCLUDED IN THE BATCH TAB === ####
