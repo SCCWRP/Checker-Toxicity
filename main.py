@@ -140,8 +140,6 @@ summary.rename(columns={"resultunits": "units"}, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
 summary = summary.groupby(['stationid','lab','sampletypecode','toxbatch','species','concentration','endpoint','units','sqocategory','mean','n','stddev','pctcontrol','pvalue','tstat','sigeffect','qacode','controlvalue']).size().to_frame(name = 'count').reset_index()
 
-if excel_path == 'data/example.xlsx':
-	summary.to_csv('output/summary_validation.csv', sep=',', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
 
