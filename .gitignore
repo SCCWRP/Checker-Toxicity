@@ -1,6 +1,4 @@
 output/*.xlsx
 output/*.csv
-data/*.xlsx
-data/*.csv
 __pycache__
 .DS_Store
