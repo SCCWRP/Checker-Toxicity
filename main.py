@@ -1,46 +1,36 @@
-import sys, os
+import sys, os, collections
 import pandas as pd
 import numpy as np
-from scipy import stats
-#from ordereddict import OrderedDict
-import collections
-import urllib, json
 
-## COMMON FUNCTIONS
-# PRINT all errors TO errorLog function placeholder used by web checker to print to multiple places
-def errorLog(message):
-    print(message)
+# custom functions
+from functions import *
 
-def dcAddErrorToList(error_column, row, error_to_add,df):
-	df.at[int(row), 'row'] = str(row)
-	if error_column in df.columns:
-		# check if cell value is empty (nan) 
-		if(pd.isnull(df.iat[int(row), df.columns.get_loc(error_column)])):
-			# no data exists in cell so add error
-			df.at[int(row), error_column] = error_to_add
-			errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
-		else:
-			# a previous error was recorded so append to it
-			# even though there may be data lets check to make sure it is not empty
-			if str(df.at[int(row), error_column]):
-				#errorLog("There is already a previous error recorded: %s" % str(df.iloc[int(row), df.columns.get_loc(error_column)]))
-				df.at[int(row), error_column] = str(df.iloc[int(row), df.columns.get_loc(error_column)]) + "," + error_to_add
-				errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
-			else:
-				#errorLog("No error is recorded: %s" % str(df.iloc[int(row), df.columns.get_loc(error_column)]))
-				df.at[int(row), error_column] = error_to_add
-				errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
-	else:
-		df.at[int(row), error_column] = error_to_add
-		errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
-	return df
+valid_flags = ('-f','--file','-h')
 
-### WORKSPACE START ###
-# place the bight13 toxicity data in a location that the application can access
-#df = pd.ExcelFile('/Users/pauls/Documents/Projects/Bight18/Training/clean.xlsx')
-# df = pd.ExcelFile('./errors.xlsx')
+args = sys.argv
 
-excel_path = input("Please enter the path to the excel file to check:") if len(sys.argv) == 1 else sys.argv[1]
+#VERBOSE = ('-v' in args) or ('--verbose' in args)
+
+
+if '-h' in args:
+	print(
+	'''
+	At the command line, run:
+	
+	python3 main.py [OPTIONAL -f <file path to tox data>]
+
+	If the --file or -f flag is not provided, you will be prompted for the path to the excel file that you will be checking
+	'''
+	)
+	sys.exit()
+
+# if they provided the file path then get the excel file path, if not, prompt the user's input
+if not ('-f' in args) or ('--file' in args):
+	excel_path = input("Please enter the path to the excel file to check:")
+else:
+	excel_path = args[args.index('-f' if '-f' in args else '--file') + 1]
+	
+
 assert os.path.exists(excel_path), "File path {} not found".format(excel_path)
 df = pd.ExcelFile(excel_path)
 
@@ -78,31 +68,9 @@ batch = all_dataframes[0]
 result = all_dataframes[1]
 summary = all_dataframes[1]
 wq = all_dataframes[2]
-''' need working
-for dataframe in all_dataframes.keys():
-	df_sheet_and_table_name = dataframe.strip().split(" - ")
-	table_name = str(df_sheet_and_table_name[2])
-	if table_name == "tbltoxicitybatchinformation":
-		batch = all_dataframes[dataframe]
-	if table_name == "tbltoxicityresults":
-		result = all_dataframes[dataframe]
-		summary = all_dataframes[dataframe]
-	if table_name == "tbltoxicitywq":
-		wq = all_dataframes[dataframe]
-'''
-
-# for testing since it takes a long time to run
-summary = summary[:25]
 
 
 
-def getCalculatedValues(grp):                                                                  
-	grp['mean'] = grp['result'].mean()
-	grp['n'] = grp['fieldreplicate'].sum()
-	grp['stddev'] = grp['result'].std()
-	grp['variance'] = grp['stddev'].apply(lambda x: x ** 2 )
-	grp['coefficientvariance'] = ((grp['stddev']/grp['mean']) * 100)
-	return grp
 summary = summary.groupby(['stationid','toxbatch','fieldreplicate']).apply(getCalculatedValues)
 
 # get all control records
@@ -128,108 +96,17 @@ result_mean = nocneg.groupby(['stationid','toxbatch','mean', 'sampletypecode'])[
 control_mean['controlvalue'] = control_mean['mean']
 summary = summary.merge(control_mean[['toxbatch','controlvalue']], how = 'left', on = ['toxbatch'])
 
-## prep code control_mean_stats_dict used in getPctControl function
-#cneg_stats = summary[['stationid','toxbatch','sampletypecode','n','stddev','mean','variance']].where(summary['sampletypecode'] == 'CNEG')
-#cneg_stats = cneg_stats.dropna()
-#cneg_stats['unique'] = np.nan
-#control_mean_stats = cneg_stats.groupby(['stationid','toxbatch','n','stddev','mean','variance'])['unique'].nunique().reset_index()
-## create a dictionary lookup of toxbatch keys and corresponding important values
-# drop unique column we used earlier
-#control_mean_stats.drop('unique', axis=1, inplace=True)
-# make toxbatch the index - we already group so it is unique
-#control_mean_dict = control_mean.set_index('toxbatch')['mean'].to_dict()
-#control_mean_stats.set_index("toxbatch", drop=True, inplace=True)
-#control_mean_stats_dict = control_mean_stats.to_dict(orient="index")
-## prep code control_mean_stats_dict end
-# THE CODE ABOVE SEEMS TO BE UNNECESSARY - THE LINE BELOW CAN DO THE SAME THING - NOTE ADJUSTED LINE BELOW ALSO
 ## create a dictionary lookup of toxbatch keys and corresponding control mean values
 control_mean_dict = control_mean.set_index('toxbatch')['mean'].to_dict()
 
-def getPctControl(row):
-	## toxbatch control should always be 100
-	if(row['sampletypecode'] == 'CNEG'):
-		row['pctcontrol'] = 100
-	else:
-		if row['toxbatch'] in control_mean_dict:
-			# if the toxbatch is in the lookup dictionary then
-			# divide the result mean from the control mean and times by 100
-			# OLD LINE row['pctcontrol'] = ((row['mean']/control_mean_stats_dict[row['toxbatch']]['mean']) * 100)
-			row['pctcontrol'] = ((row['mean']/control_mean_dict[row['toxbatch']]) * 100)
-		else:
-			row['pctcontrol'] = np.NaN
-	return row
-summary = summary.apply(getPctControl, axis=1)
+summary = summary.apply( lambda row: getPctControl(row, control_mean_dict), axis=1)
 
 # initialize tstat column
 summary['tstat'] = np.NaN
 
-## author - Tyler Vu
-def getPValue(summary):
-	for index, values in summary['toxbatch'].iteritems():
-		station_code = summary.iloc[index, summary.columns.get_loc('stationid')]
-		cneg_result = summary[['result']].where((summary['sampletypecode'] == 'CNEG') & (summary['toxbatch'] == values))
-		result_both = summary[['result']].where((summary['toxbatch'] == values) & (summary['stationid'] == station_code) )
-		cneg_result = cneg_result.dropna()
-		result_both = result_both.dropna()
-		t, p = stats.ttest_ind(cneg_result, result_both, equal_var = False)
-		print(t)
-		print(p)
-		print(summary)
-		summary.at[index, 'tstat'] = t
-		single_tail = p/2
-		summary.at[index, 'pvalue'] = single_tail #we divide by 2 to make it a 1 tailed
-		if (t < 0):
-			summary.at[index, 'sigeffect'] = 'NSC'
-		else:
-			if (single_tail <= .05):
-				summary.at[index,'sigeffect'] = 'SC'
-			else:
-				summary.at[index,'sigeffect'] = 'NSC'
 getPValue(summary)
 
-## author - Tyler Vu 
-def getSQO(grp):
-	#if(grp[grp.index.map(lambda x: x[0] in species)]):
-    #if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
-		
-	if(grp['species'] == 'Eohaustorius estuarius'):
-		if(grp['mean'] < 90):
-			if (grp['pctcontrol'] < 82):
-				if (grp['pctcontrol'] < 59):
-					grp['sqocategory'] = 'High Toxicity'
-				else:
-					if (grp['sigeffect'] == 'NSC'):
-						grp['sqocategory'] = 'Low Toxicity'
-					else:
-						grp['sqocategory'] = 'Moderate Toxicity'
-			else:
-				if (grp['sigeffect'] == 'NSC'):
-					grp['sqocategory'] = 'Nontoxic'
-				else:
-					grp['sqocategory'] = 'Low Toxicity'
-		else:
-			grp['sqocategory'] = 'Nontoxic'
-	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
-	elif (grp['species'] == 'Mytilus galloprovincialis'):
-		if (grp['mean'] < 80):
-			if (grp['pctcontrol'] < 77):
-				if (grp['pctcontrol'] < 42):
-					grp['sqocategory'] = 'High Toxicity'
-				else:
-					if (grp['sigeffect'] == 'NSC'):
-						grp['sqocategory'] = 'Low Toxicity'
-					else:
-						grp['sqocategory'] = 'Moderate Toxicity'
-			else:
-				if (grp['sigeffect'] == 'NSC'):
-					grp['sqocategory'] = 'Nontoxic'
-				else:
-					grp['sqocategory'] = 'Low Toxicity'
-		else:
-				grp['sqocategory'] = 'Nontoxic'
-	else:
-		grp['sqocategory'] = None
-	return grp
+
 summary = summary.apply(getSQO, axis=1)
 summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
@@ -239,27 +116,24 @@ summary.drop('labrep', axis=1, inplace=True)
 
 ## SUMMARY TABLE CHECKS ##
 # the three blocks of code and corresponding for loops could be combined into one simpler function
-def checkSummary(statement,column,warn_or_error,error_label,human_error):
-	for item_number in statement:
-		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
-		dcAddErrorToList(error_label,item_number,unique_error,summary)
+
 
 # 1 - WARNING TO CHECK FOR DATA ENTRY ERRORS IF THE STANDARD DEVIATION FOR A SAMPLE EXCEEDS 50 
 errorLog("## WARNING TO CHECK FOR DATA ENTRY ERRORS IF THE STANDARD DEVIATION FOR A SAMPLE EXCEEDS 50 ##")
 errorLog(summary.loc[(summary["stddev"] > 50)])
-checkSummary(summary.loc[(summary["stddev"] > 50)].index.tolist(),'StdDev','Custom Toxicity','error','Warning standard deviation exceeds 50.')
+checkSummary(summary.loc[(summary["stddev"] > 50)].index.tolist(),'StdDev','Custom Toxicity','error','Warning standard deviation exceeds 50.',summary)
 # 2 - MEAN SHOULD BE GREATER THAN 90 WHERE SPECIES IS EQUAL TO "EOHAUSTORIUS ESTUARIES" OR "EE" AND SAMPLETYPECODE IS EQUAL TO "CNEG"
 errorLog("## MEAN SHOULD BE GREATER THAN 90 WHERE SPECIES IS EQUAL TO EOHAUSTORIUS ESTUARIES OR EE AND SAMPLETYPECODE IS EQUAL TO CNEG##")
 errorLog(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 90)])
-checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 90)].index.tolist(),'Mean','Custom Toxicity','error','Does not meet control acceptability criterion; mean control value < 90')
+checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 90)].index.tolist(),'Mean','Custom Toxicity','error','Does not meet control acceptability criterion; mean control value < 90',summary)
 # 3 - MEAN SHOULD BE GREATER THAN 70 WHERE SPECIES IS EQUAL TO "MYTILUS GALLOPROVINIALIS" OR "MG" AND SAMPLETYPECODE IS EQUAL TO "CNEG"
 errorLog("## MEAN SHOULD BE GREATER THAN 70 WHERE SPECIES IS EQUAL TO MYTILUS GALLOPROVINIALIS OR MG AND SAMPLETYPECODE IS EQUAL TO CNEG ##")
 errorLog(summary.loc[(summary['species'].isin(['Mytilus galloprovinialis','MG'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 70)])
-checkSummary(summary.loc[(summary['species'].isin(['Mytilus galloprovinialis','MG'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 70)].index.tolist(),'Mean','Custom Toxicity','error','Does not meet control acceptability criterion; mean control value < 70')
+checkSummary(summary.loc[(summary['species'].isin(['Mytilus galloprovinialis','MG'])) & (summary['sampletypecode'] == 'CNEG') & (summary['mean'] < 70)].index.tolist(),'Mean','Custom Toxicity','error','Does not meet control acceptability criterion; mean control value < 70',summary)
 # 4 - COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS EQUAL TO "EOHAUSTORIUS ESTUARIES" OR "EE" AND SAMPLETYPECODE IS EQUAL TO "CNEG" 
 errorLog("## COEFFICIENT VARIANCE SHOULD NOT BE GREATER THAN 11.9 WHERE SPECIES IS EQUAL TO EOHAUSTORIUS ESTUARIES OR EE AND SAMPLETYPECODE IS EQUAL TO CNEG ##")
 errorLog(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)])
-checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Toxicity','error','Does not meet control acceptability criterion; coefficient value > 11.9')
+checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'])) & (summary['sampletypecode'] == 'CNEG') & (summary['coefficientvariance'] > 11.9)].index.tolist(),'CoefficientVariance','Custom Toxicity','error','Does not meet control acceptability criterion; coefficient value > 11.9',summary)
 ## END SUMMARY TABLE CHECKS ##
 # rename a few columns to match with existing b13 column names
 summary.rename(columns={"resultunits": "units"}, inplace=True)
@@ -269,42 +143,6 @@ summary.to_csv('output.csv', sep='\t', encoding='utf-8')
 
 ## END SUMMARY TABLE CHECKS ##
 
-## CHECKS ##
-def checkData(statement,column,warn_or_error,error_label,human_error,dataframe):
-	for item_number in statement:
-		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
-		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
-def checkLogic(statement,column,warn_or_error,error_label,human_error,dataframe):
-	for item_number in statement:
-		unique_error = '{"column": "%s", "error_type": "%s", "error": "%s"}' % (column,warn_or_error,human_error)
-		dcAddErrorToList(error_label,item_number,unique_error,dataframe)
-
-def dcValueAgainstMultipleValues (field,ucfield,listname,listfield,df):
-    # author - Jordan Golemo
-    # example: field = qacode, ucfield = QACode, listname = lu_toxtestacceptability, listfield = testacceptability, df = results
-    # get published lookup list values
-    url_search = "https://gis.sccwrp.org/arcgis/rest/services/bight2018%s/FeatureServer/0/query?where=1=1&returnGeometry=false&outFields=*&f=json" % listname
-    jsonurl = urllib.urlopen(url_search).read()
-    jsonlist = json.loads(jsonurl)
-    list_of_codes = []
-    # add lookup list values to array
-    for i in range(len(jsonlist['features'])):
-        list_of_codes.append(jsonlist['features'][i]['attributes'][listfield])
-    # submitted field to check against lookup list
-    df_search = df[field]
-    df_search = df_search.fillna('empty')
-    for i in range(len(df_search)):
-        # submitted individual field/cell values are separated by commas like: A,B,C
-        df_split = df_search[i].replace(',',' ').split()
-        for j in range(len(df_split)):
-            # find out if individual element is not in url lookup list
-            if df_split[j] not in list_of_codes:
-                invalid_code = df_search[i]
-                # required so it cant be empty
-                if df_split[j] == 'empty':
-                    checkData(df[df[field].isnull()].tmp_row.tolist(),ucfield,'Toxicity Error','error','A code is required: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (listname,listname),df)
-                else:
-                    checkData(df.loc[df[field]==invalid_code].tmp_row.tolist(),ucfield,'Toxicity Error','error','You have submitted an invalid code: %s. Please see lookup list: <a href=http://checker.sccwrp.org/checker/scraper?action=help&layer=%s target=_blank>%s</a>' % (df_split[j],listname,listname),df)
 
 ## LOGIC ##
 # 1 - All records for each table must have a corresponding record in the other tables due on submission. Join tables on Agency/LabCode and ToxBatch/QABatch
@@ -359,50 +197,6 @@ errorLog("## A MINIMUM NUMBER OF 10 REPLICATES ARE REQUIRED FOR SPECIES NEANTHES
 errorLog(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)])
 checkLogic(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)].tmp_row.tolist(),'LabRep','Logic Error','error','A minimum number of 10 replicates are required for species Neanthes arenaceodentata',result)
 
-# 3. EACH BS or SWI BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE.
-errorLog("## EACH BS or SWI BATCH MUST HAVE A REFERENCE TOXICANT BATCH WITHIN A SPECIFIED DATE RANGE. ##")
-# get reference toxicant dataframe
-# batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'testdurationunits', 'referencebatch']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
-batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'testdurationunits']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
-# drop emptys
-batchrt = batchrt.dropna()
-if len(batchrt.index) != 0:
-	# get bs dataframe added swi on 21june17
-	#batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'testdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
-	batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'testdurationunits','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
-	# drop emptys
-	batchbs = batchbs.dropna()
-	# get bs dataframe
-
-
-	# if len(batchbs.index) != 0:
-	# 	# find any bs batch records with a missing rt 
-	# 	# errorLog(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
-	# 	# checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS or SWI batch record is missing reference toxicant batch record',batch)
-	# 	# merge bs and rt
-	# 	bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
-	# 	# create date range column
-	# 	def checkRTDate(grp):
-	# 		grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
-	# 		grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
-	# 		d = grp['teststartdate_x'] - grp['teststartdate_y']
-	# 		grp['daterange'] = abs(d.days)
-	# 		return grp
-	# 	bsmerge = bsmerge.apply(checkRTDate, axis = 1)
-	# 	# checks by species and datarange
-	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
-	# 	checkLogic(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
-	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
-	# 	checkLogic(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
-	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
-	# else:
-	# 	unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Bulk Sediment record in batch submission"}'
-	# 	addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
-	# 	errorsCount('custom')
-else:
-	unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Reference Toxicant record in batch submission"}'
-	dcAddErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
-	# errorsCount('custom')
 ## END LOGIC CHECKS ##
 
 ## BATCH CHECKS ##
@@ -517,3 +311,28 @@ checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & 
 errorLog(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))])
 checkData(dfwq.loc[(dfwq['species'].isin(['Mytilus galloprovincialis','MG'])) & (dfwq['parameter'] == 'PH') & ((dfwq['result'] <= 7.6) | (dfwq['result'] >= 8.3))].index.tolist(),'Result','Toxicity WQ Error','error','Water quality parameter for paramter PH not in acceptable range: must be between 7.6-8.3',wq)
 ## END WQ CHECKS ##
+
+if not os.path.exists('output'):
+	os.makedirs('output')
+
+writer = pd.ExcelWriter('output/report.xlsx', engine = 'xlsxwriter')
+
+output_dfs = {
+	'result_original': result.drop(columns = ['tmp_row','row','error']) if all([c in result.columns for c in ('tmp_row','row','error')]) else result,
+	'result_errors': result[~result.error.isna()] if 'error' in result.columns else pd.DataFrame(),
+	
+	'batch_original': batch.drop(columns = ['tmp_row','row','error']) if all([c in batch.columns for c in ('tmp_row','row','error')]) else batch,
+	'batch_errors': batch[~batch.error.isna()] if 'error' in batch.columns else pd.DataFrame(),
+	
+	'wq_original': wq.drop(columns = ['tmp_row','row','error']) if all([c in wq.columns for c in ('tmp_row','row','error')]) else wq,
+	'wq_errors': wq[~wq.error.isna()] if 'error' in wq.columns else pd.DataFrame(),
+
+	'summary': summary
+}
+
+for sheetname, df in output_dfs.items():
+	df.to_excel(writer, sheet_name=sheetname, index = False)
+
+writer.save()
+
+
