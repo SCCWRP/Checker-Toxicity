@@ -1,1 +1,4 @@
 	stationid	lab	sampletypecode	toxbatch	species	concentration	endpoint	units	sqocategory	mean	n	stddev	pctcontrol	pvalue	tstat	sigeffect	qacode	controlvalue	count
+0	0	Aquatic Bioassay and Consulting Laboratories	CNEG	B13072313E	Eohaustorius estuarius	-88.0	10 Day Survival Percent	%	Nontoxic	98.0	5	2.7386127875258306	100.0	0.5	0.0	NSC	A	98.0	5
+1	B13-8325	Aquatic Bioassay and Consulting Laboratories	QA	B13072313E	Eohaustorius estuarius	-88.0	10 Day Survival Percent	%	Nontoxic	94.0	5	6.519202405202649	95.91836734693877	0.12901323077762245	1.2649110640673518	NSC	A	98.0	5
+2	B13-9197	Aquatic Bioassay and Consulting Laboratories	QA	B13072313E	Eohaustorius estuarius	-88.0	10 Day Survival Percent	%	Nontoxic	93.0	5	4.47213595499958	94.89795918367348	0.03632214576991896	2.1320071635561044	SC	A	98.0	5

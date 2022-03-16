@@ -1,50 +1,48 @@
-import sys
+import sys, os
 import pandas as pd
 import numpy as np
 from scipy import stats
-import xlrd
 #from ordereddict import OrderedDict
 import collections
-import math
 import urllib, json
-stdout = sys.stdout
-reload(sys)
-sys.setdefaultencoding('utf-8')
-sys.stdout = stdout
 
 ## COMMON FUNCTIONS
 # PRINT all errors TO errorLog function placeholder used by web checker to print to multiple places
 def errorLog(message):
-        print(message)
+    print(message)
 
 def dcAddErrorToList(error_column, row, error_to_add,df):
-	df.ix[int(row), 'row'] = str(row)
+	df.at[int(row), 'row'] = str(row)
 	if error_column in df.columns:
 		# check if cell value is empty (nan) 
-		if(pd.isnull(df.ix[int(row), error_column])):
+		if(pd.isnull(df.iat[int(row), df.columns.get_loc(error_column)])):
 			# no data exists in cell so add error
-	      		df.ix[int(row), error_column] = error_to_add
+			df.at[int(row), error_column] = error_to_add
 			errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
 		else:
 			# a previous error was recorded so append to it
 			# even though there may be data lets check to make sure it is not empty
-			if str(df.ix[int(row), error_column]):
-				#errorLog("There is already a previous error recorded: %s" % str(df.ix[int(row), error_column]))
-				df.ix[int(row), error_column] = str(df.ix[int(row), error_column]) + "," + error_to_add
+			if str(df.at[int(row), error_column]):
+				#errorLog("There is already a previous error recorded: %s" % str(df.iloc[int(row), df.columns.get_loc(error_column)]))
+				df.at[int(row), error_column] = str(df.iloc[int(row), df.columns.get_loc(error_column)]) + "," + error_to_add
 				errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
 			else:
-				#errorLog("No error is recorded: %s" % str(df.ix[int(row), error_column]))
-	      			df.ix[int(row), error_column] = error_to_add
+				#errorLog("No error is recorded: %s" % str(df.iloc[int(row), df.columns.get_loc(error_column)]))
+				df.at[int(row), error_column] = error_to_add
 				errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
 	else:
-		df.ix[int(row), error_column] = error_to_add
+		df.at[int(row), error_column] = error_to_add
 		errorLog("Row: %s, Error To Add: %s" % (int(row),error_to_add))
 	return df
 
 ### WORKSPACE START ###
 # place the bight13 toxicity data in a location that the application can access
 #df = pd.ExcelFile('/Users/pauls/Documents/Projects/Bight18/Training/clean.xlsx')
-df = pd.ExcelFile('./errors.xlsx')
+# df = pd.ExcelFile('./errors.xlsx')
+
+excel_path = input("Please enter the path to the excel file to check:") if len(sys.argv) == 1 else sys.argv[1]
+assert os.path.exists(excel_path), "File path {} not found".format(excel_path)
+df = pd.ExcelFile(excel_path)
 
 # get sheet names
 df_tab_names = df.sheet_names
@@ -56,16 +54,16 @@ all_dataframes = collections.OrderedDict()
 count = 0
 for tab in df_tab_names:
 	tab_name = tab
-    	### extract individual dataframes
-    	tab = df.parse(tab)
-        # if the sheet is blank skip to the next sheet
+    ### extract individual dataframes
+	tab = df.parse(tab)
+	# if the sheet is blank skip to the next sheet
 	if tab.empty:
 		errorLog('The application is skipping sheet "%s" because it is empty' % tab)
 		continue
 	# lowercase all column names
 	tab.columns = [x.lower() for x in tab.columns]
-    	### and put into dictionary object
-    	all_dataframes[count] = tab
+    ### and put into dictionary object
+	all_dataframes[count] = tab
 	### create tmp_row for tracking row numbers
 	all_dataframes[count]['tmp_row'] = all_dataframes[count].index
 	count = count + 1
@@ -92,6 +90,11 @@ for dataframe in all_dataframes.keys():
 	if table_name == "tbltoxicitywq":
 		wq = all_dataframes[dataframe]
 '''
+
+# for testing since it takes a long time to run
+summary = summary[:25]
+
+
 
 def getCalculatedValues(grp):                                                                  
 	grp['mean'] = grp['result'].mean()
@@ -143,79 +146,90 @@ summary = summary.merge(control_mean[['toxbatch','controlvalue']], how = 'left',
 control_mean_dict = control_mean.set_index('toxbatch')['mean'].to_dict()
 
 def getPctControl(row):
-    	## toxbatch control should always be 100
-    	if(row['sampletypecode'] == 'CNEG'):
-        	row['pctcontrol'] = 100
-       	else:
-            	if row['toxbatch'] in control_mean_dict:
-                	# if the toxbatch is in the lookup dictionary then
-                	# divide the result mean from the control mean and times by 100
-                	# OLD LINE row['pctcontrol'] = ((row['mean']/control_mean_stats_dict[row['toxbatch']]['mean']) * 100)
+	## toxbatch control should always be 100
+	if(row['sampletypecode'] == 'CNEG'):
+		row['pctcontrol'] = 100
+	else:
+		if row['toxbatch'] in control_mean_dict:
+			# if the toxbatch is in the lookup dictionary then
+			# divide the result mean from the control mean and times by 100
+			# OLD LINE row['pctcontrol'] = ((row['mean']/control_mean_stats_dict[row['toxbatch']]['mean']) * 100)
 			row['pctcontrol'] = ((row['mean']/control_mean_dict[row['toxbatch']]) * 100)
-        return row
+		else:
+			row['pctcontrol'] = np.NaN
+	return row
 summary = summary.apply(getPctControl, axis=1)
+
+# initialize tstat column
+summary['tstat'] = np.NaN
 
 ## author - Tyler Vu
 def getPValue(summary):
 	for index, values in summary['toxbatch'].iteritems():
-		station_code = summary.ix[index, 'stationid']
+		station_code = summary.iloc[index, summary.columns.get_loc('stationid')]
 		cneg_result = summary[['result']].where((summary['sampletypecode'] == 'CNEG') & (summary['toxbatch'] == values))
 		result_both = summary[['result']].where((summary['toxbatch'] == values) & (summary['stationid'] == station_code) )
 		cneg_result = cneg_result.dropna()
 		result_both = result_both.dropna()
 		t, p = stats.ttest_ind(cneg_result, result_both, equal_var = False)
-		summary.ix[index, 'tstat'] = t
+		print(t)
+		print(p)
+		print(summary)
+		summary.at[index, 'tstat'] = t
 		single_tail = p/2
-		summary.ix[index, 'pvalue'] = single_tail #we divide by 2 to make it a 1 tailed
+		summary.at[index, 'pvalue'] = single_tail #we divide by 2 to make it a 1 tailed
 		if (t < 0):
-			summary.ix[index, 'sigeffect'] = 'NSC'
+			summary.at[index, 'sigeffect'] = 'NSC'
 		else:
 			if (single_tail <= .05):
-				summary.ix[index, 'sigeffect'] = 'SC'
+				summary.at[index,'sigeffect'] = 'SC'
 			else:
-				summary.ix[index, 'sigeffect'] = 'NSC'
+				summary.at[index,'sigeffect'] = 'NSC'
 getPValue(summary)
 
 ## author - Tyler Vu 
 def getSQO(grp):
 	#if(grp[grp.index.map(lambda x: x[0] in species)]):
-    	#if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
-    	if(grp['species'] == 'Eohaustorius estuarius'):
-        	if(grp['mean'] < 90):
-            		if (grp['pctcontrol'] < 82):
-                		if (grp['pctcontrol'] < 59):
-                    			grp['sqocategory'] = 'High Toxicity'
-                		else:
-                    			if (grp['sigeffect'] == 'NSC'):
-                        			grp['sqocategory'] = 'Low Toxicity'
-                    			else:
-                        			grp['sqocategory'] = 'Moderate Toxicity'
-            		else:
-                		if (grp['sigeffect'] == 'NSC'):
-                    			grp['sqocategory'] = 'Nontoxic'
-              			else:
+    #if(grp['species'].isin(['EE','Eohaustorius estuarius'])):
+		
+	if(grp['species'] == 'Eohaustorius estuarius'):
+		if(grp['mean'] < 90):
+			if (grp['pctcontrol'] < 82):
+				if (grp['pctcontrol'] < 59):
+					grp['sqocategory'] = 'High Toxicity'
+				else:
+					if (grp['sigeffect'] == 'NSC'):
+						grp['sqocategory'] = 'Low Toxicity'
+					else:
+						grp['sqocategory'] = 'Moderate Toxicity'
+			else:
+				if (grp['sigeffect'] == 'NSC'):
+					grp['sqocategory'] = 'Nontoxic'
+				else:
 					grp['sqocategory'] = 'Low Toxicity'
-                else:
-            		grp['sqocategory'] = 'Nontoxic'
-    	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
-    	elif (grp['species'] == 'Mytilus galloprovincialis'):
-        	if (grp['mean'] < 80):
-            		if (grp['pctcontrol'] < 77):
-                		if (grp['pctcontrol'] < 42):
-                    			grp['sqocategory'] = 'High Toxicity'
-                		else:
-                    			if (grp['sigeffect'] == 'NSC'):
-                        			grp['sqocategory'] = 'Low Toxicity'
-                    			else:
-                        			grp['sqocategory'] = 'Moderate Toxicity'
-            		else:
-                		if (grp['sigeffect'] == 'NSC'):
-                    			grp['sqocategory'] = 'Nontoxic'
-                		else:
-                    			grp['sqocategory'] = 'Low Toxicity'
-        	else:
-            		grp['sqocategory'] = 'Nontoxic'
-    	return grp
+		else:
+			grp['sqocategory'] = 'Nontoxic'
+	#elif (grp['species'].isin(['MG','Mytilus galloprovincialis'])):
+	elif (grp['species'] == 'Mytilus galloprovincialis'):
+		if (grp['mean'] < 80):
+			if (grp['pctcontrol'] < 77):
+				if (grp['pctcontrol'] < 42):
+					grp['sqocategory'] = 'High Toxicity'
+				else:
+					if (grp['sigeffect'] == 'NSC'):
+						grp['sqocategory'] = 'Low Toxicity'
+					else:
+						grp['sqocategory'] = 'Moderate Toxicity'
+			else:
+				if (grp['sigeffect'] == 'NSC'):
+					grp['sqocategory'] = 'Nontoxic'
+				else:
+					grp['sqocategory'] = 'Low Toxicity'
+		else:
+				grp['sqocategory'] = 'Nontoxic'
+	else:
+		grp['sqocategory'] = None
+	return grp
 summary = summary.apply(getSQO, axis=1)
 summary.drop('result', axis=1, inplace=True)
 summary.drop('labrep', axis=1, inplace=True)
@@ -348,43 +362,47 @@ checkLogic(dfrep.loc[(dfrep['species'] == 'NA') & (dfrep['replicatecount'] < 10)
 # 3. EACH BS or SWI BATCH MUST HAVE A "REFERENCE TOXICANT" BATCH WITHIN A SPECIFIED DATE RANGE.
 errorLog("## EACH BS or SWI BATCH MUST HAVE A REFERENCE TOXICANT BATCH WITHIN A SPECIFIED DATE RANGE. ##")
 # get reference toxicant dataframe
-batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
+# batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'testdurationunits', 'referencebatch']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
+batchrt = batch[['toxbatch','teststartdate', 'actualtestduration', 'testdurationunits']].where(batch['matrix'].isin(['RT','Reference Toxicant']))
 # drop emptys
 batchrt = batchrt.dropna()
 if len(batchrt.index) != 0:
 	# get bs dataframe added swi on 21june17
-	batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'actualtestdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
+	#batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'testdurationunits', 'referencebatch','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
+	batchbs = batch[['toxbatch', 'matrix', 'species', 'teststartdate', 'actualtestduration', 'testdurationunits','tmp_row']].where(batch['matrix'].isin(['BS','SWI','Bulk Sediment (whole sediment)','Sediment Water Interface']))
 	# drop emptys
 	batchbs = batchbs.dropna()
 	# get bs dataframe
-	if len(batchbs.index) != 0:
-		# find any bs batch records with a missing rt 
-		errorLog(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
-		checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS or SWI batch record is missing reference toxicant batch record',batch)
-		# merge bs and rt
-		bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
-		# create date range column
-		def checkRTDate(grp):
-			grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
-       			grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
-			d = grp['teststartdate_x'] - grp['teststartdate_y']
-       			grp['daterange'] = abs(d.days)
-			return grp
-		bsmerge = bsmerge.apply(checkRTDate, axis = 1)
-		# checks by species and datarange
-		errorLog(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
-		checkLogic(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
-		errorLog(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
-		checkLogic(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
-		errorLog(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
-	else:
-		unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Bulk Sediment record in batch submission"}'
-		addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
-		errorsCount('custom')
+
+
+	# if len(batchbs.index) != 0:
+	# 	# find any bs batch records with a missing rt 
+	# 	# errorLog(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))])
+	# 	# checkData(batchbs[(~batchbs.referencebatch.isin(batchrt.toxbatch))].tmp_row.tolist(),'Matrix','Toxicity Error','error','BS or SWI batch record is missing reference toxicant batch record',batch)
+	# 	# merge bs and rt
+	# 	bsmerge = pd.merge(batchbs, batchrt, how = 'inner', on = ['referencebatch'])
+	# 	# create date range column
+	# 	def checkRTDate(grp):
+	# 		grp['teststartdate_x'] = pd.to_datetime(grp['teststartdate_x'])
+	# 		grp['teststartdate_y'] = pd.to_datetime(grp['teststartdate_y'])
+	# 		d = grp['teststartdate_x'] - grp['teststartdate_y']
+	# 		grp['daterange'] = abs(d.days)
+	# 		return grp
+	# 	bsmerge = bsmerge.apply(checkRTDate, axis = 1)
+	# 	# checks by species and datarange
+	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)])
+	# 	checkLogic(bsmerge.loc[(bsmerge['species'] == 'EE') & (bsmerge['daterange'] > 10)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: EE less than 10 days',batch)
+	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)])
+	# 	checkLogic(bsmerge.loc[(bsmerge['species'] == 'MG') & (bsmerge['daterange'] > 2)].tmp_row.tolist(),'Matrix','Logic Error','toxicity_errors','Each BS or SWI batch must have a Reference Toxicant batch within a specified date range: MG less than 2 days',batch)
+	# 	errorLog(bsmerge.loc[(bsmerge['species'] == 'NA') & (bsmerge['daterange'] > 28)])
+	# else:
+	# 	unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Bulk Sediment record in batch submission"}'
+	# 	addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
+	# 	errorsCount('custom')
 else:
 	unique_error = '{"column": "Matrix", "error_type": "Logic Error", "error": "A submission requires a Reference Toxicant record in batch submission"}'
-	addErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
-	errorsCount('custom')
+	dcAddErrorToList('toxicity_errors',0,unique_error,all_dataframes[store_keys[0]])
+	# errorsCount('custom')
 ## END LOGIC CHECKS ##
 
 ## BATCH CHECKS ##
@@ -424,8 +442,9 @@ errorLog(rtbatch[(~rtbatch.toxbatch.isin(rtmerge.toxbatch))])
 checkData(rtbatch[(~rtbatch.toxbatch.isin(rtmerge.toxbatch))].tmp_row.tolist(),'Result/SampleTypeCode','Toxicity Error','error','Each batch with a matrix of RT must include a corresponding result SampleTypeCode = RFNH3',batch)
 
 # 3. TESTACCEPTABILITY CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY) author - Jordan Golemo
-errorLog("TESTACCEPTABILITY CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
-dcValueAgainstMultipleValues ('testacceptability','TestAcceptability','lu_toxtestacceptability','testacceptability',batch)
+# disable in standalone mode
+# errorLog("TESTACCEPTABILITY CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
+# dcValueAgainstMultipleValues ('testacceptability','TestAcceptability','lu_toxtestacceptability','testacceptability',batch)
 
 ## END BATCH CHECKS ##
 
@@ -449,32 +468,33 @@ errorLog(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result
 checkData(result.loc[result['matrix'].isin(['Reference Toxicant','RT']) & (result['concentration'] == -88)].tmp_row.tolist(),'Concentration','Toxicity Error','error','A "Reference Toxicant" record in the Matrix field can not have a -88 in the Concentration field',result)
 
 # 3. STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH.
-errorLog("## STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH. ##")
-# concatenate station and species together - used below to match against whats returned from database
-result['stationidspecies'] = result['stationid'] + "+" + result['species']
-# lab list to search by
-lab = result.lab.unique()
-for l in lab:
-	search_url = "https://gis.sccwrp.org/arcgis/rest/services/Bight18ToxicityAssignedSpecies/FeatureServer/0/query?where=lab=%27{0}%27&1=1&returnGeometry=false&outFields=stationid,lab,species&f=json".format(l)
-	errorLog(search_url)
-	response = urllib.urlopen(search_url)
-	data = json.loads(response.read())
-	# loop through json records and build station and species into a single string then add to list 
-	search_list = []
-	for i in data['features']:
-		errorLog(i['attributes']['stationid']+ "+" + i['attributes']['species'])
-		search_list.append(i['attributes']['stationid']+ "+" + i['attributes']['species'])
-	errorLog(search_list)
-	# find stations/species that dont match between submission and whats in database based on lab
-	errorLog(result.loc[~result['stationidspecies'].isin(search_list)].stationid.tolist())
-	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
+# temp disable in standalone mode
+# errorLog("## STATION CHECK - A LAB IS ASSIGNED BOTH STATIONS AND TEST SPECIES. CHECK TO SEE IF THE SUBMISSION MATCHES BOTH. ##")
+# # concatenate station and species together - used below to match against whats returned from database
+# result['stationidspecies'] = "{}+{}".format(result['stationid'], result['species'])
+# # lab list to search by
+# lab = result.lab.unique()
+# for l in lab:
+# 	search_url = "https://gis.sccwrp.org/arcgis/rest/services/Bight18ToxicityAssignedSpecies/FeatureServer/0/query?where=lab=%27{0}%27&1=1&returnGeometry=false&outFields=stationid,lab,species&f=json".format(l)
+# 	errorLog(search_url)
+# 	response = urllib.urlopen(search_url)
+# 	data = json.loads(response.read())
+# 	# loop through json records and build station and species into a single string then add to list 
+# 	search_list = []
+# 	for i in data['features']:
+# 		errorLog(i['attributes']['stationid']+ "+" + i['attributes']['species'])
+# 		search_list.append(i['attributes']['stationid']+ "+" + i['attributes']['species'])
+# 	errorLog(search_list)
+# 	# find stations/species that dont match between submission and whats in database based on lab
+# 	errorLog(result.loc[~result['stationidspecies'].isin(search_list)].stationid.tolist())
+# 	checkData(result.loc[~result['stationidspecies'].isin(search_list)].tmp_row.tolist(),'StationID/Species','Toxicity Error','error','The station and species you submitted fails to match the lab assignment list',result)
 
-# 4. QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). author - Jordan Golemo
-errorLog("QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
-dcValueAgainstMultipleValues ('qacode','QACode','lu_toxtestacceptability','testacceptability',result)
+# # 4. QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY). author - Jordan Golemo
+# errorLog("QACODE CHECK - A SINGLE QACODE IS REQUIRED BUT MULTIPLE QACODES ARE POSSIBLE (MANY TO MANY)")
+# dcValueAgainstMultipleValues ('qacode','QACode','lu_toxtestacceptability','testacceptability',result)
 
 # drop temporary column
-result.drop('stationidspecies', axis=1, inplace=True)
+# result.drop('stationidspecies', axis=1, inplace=True)
 ## END RESULT CHECKS ##
 
 ## START WQ CHECKS ##
