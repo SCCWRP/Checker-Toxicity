@@ -6,7 +6,7 @@ All of the code stored here is specific to bight toxicity checks only. The code 
 Put the data file in the data folder, and run from the command line: 
 python3 main.py -f <filepath>
 
-The report will go to output/report.xlsx. This report will contain the original dataframes, result, batch and water quality (wq) along with their respective error reports.
+The report will go to output/report.xlsx (if the output folder does not exist, the script will create it). This report will contain the original dataframes, result, batch and water quality (wq) along with their respective error reports.
 This report.xlsx file will also have the toxicity summary report generated from the raw data
 
 There is an example data file in the data folder, called example.xlsx, the correct output for that data file is in validation/example_report.xlsx
