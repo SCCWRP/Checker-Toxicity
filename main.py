@@ -58,7 +58,6 @@ for tab in df_tab_names:
 	all_dataframes[count]['tmp_row'] = all_dataframes[count].index
 	count = count + 1
 
-### WORKSPACE END ###
 
 ### SUMMARY TABLE START ###
 
@@ -139,7 +138,7 @@ checkSummary(summary.loc[(summary['species'].isin(['Eohaustorius estuarius','EE'
 summary.rename(columns={"resultunits": "units"}, inplace=True)
 # group on the following columns and reset as a dataframe rather than groupby object
 summary = summary.groupby(['stationid','lab','sampletypecode','toxbatch','species','concentration','endpoint','units','sqocategory','mean','n','stddev','pctcontrol','pvalue','tstat','sigeffect','qacode','controlvalue']).size().to_frame(name = 'count').reset_index()
-summary.to_csv('output.csv', sep='\t', encoding='utf-8')
+
 
 ## END SUMMARY TABLE CHECKS ##
 
