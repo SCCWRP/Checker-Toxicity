@@ -18,4 +18,5 @@ Be sure that your input data has the same column headers as example.xlsx, and th
 
 You can type 
 > python3 main.py -h
+
 To print brief instructions
