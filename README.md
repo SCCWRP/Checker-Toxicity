@@ -16,7 +16,7 @@ There is an example data file in the data folder, called example.xlsx, the corre
 
 Be sure that your input data has the same column headers as example.xlsx, and that the data is formatted in the same fashion
 
-You can type 
+To print brief instructions, you can type 
 > python3 main.py -h
 
-To print brief instructions
+
